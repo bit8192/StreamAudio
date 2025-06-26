@@ -13,4 +13,6 @@ add_executable(StreamSound main.cpp
 
 if (WIN32)
     target_link_libraries(StreamSound ws2_32)
+elseif (LINUX)
+    target_link_libraries(StreamSound pulseaudio libpulse)
 endif ()
