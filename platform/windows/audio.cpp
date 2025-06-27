@@ -88,8 +88,13 @@ void generateSilence(const WAVEFORMATEX* pwfx, BYTE *buffer, UINT32 size) {
     }
 }
 
-const WAVEFORMATEX *Audio::getWaveFormat() {
-    return pwfx;
+audio_info Audio::get_audio_info() {
+    return {
+        pwfx->nSamplesPerSec,
+        pwfx->wBitsPerSample,
+        pwfx->wFormatTag,
+        pwfx->nChannels,
+    };
 }
 
 void Audio::capture(const std::function<bool(const char *, UINT32)> &callback) {

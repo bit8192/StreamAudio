@@ -6,14 +6,14 @@
 #include "platform/audio.h"
 
 
-void WriteWaveHeader(std::ofstream& ofstream, const WAVEFORMATEX* pwfx, DWORD dataSize) {
+void WriteWaveHeader(std::ofstream& ofstream, const audio_info pwfx, uint32_t dataSize) {
     WAVEFILEHEADER header;
 
-    header.audioFormat = pwfx->wFormatTag;
-    header.numChannels = pwfx->nChannels;
-    header.sampleRate = pwfx->nSamplesPerSec;
-    header.bitsPerSample = pwfx->wBitsPerSample;
-    header.blockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
+    header.audioFormat = pwfx.format;
+    header.numChannels = pwfx.channels;
+    header.sampleRate = pwfx.sample_rate;
+    header.bitsPerSample = pwfx.bits;
+    header.blockAlign = pwfx.channels * pwfx.bits / 8;
     header.byteRate = header.sampleRate * header.blockAlign;
     header.dataSize = dataSize;
     header.riffSize = dataSize + sizeof(header) - 8;
@@ -27,7 +27,7 @@ void output_test(uint32_t times){
     auto audio = Audio();
 
     auto headerPos = output.tellp();
-    WriteWaveHeader(output, audio.getWaveFormat(), 0);
+    WriteWaveHeader(output, audio.get_audio_info(), 0);
 
     size_t size = 0;
     int i = 0;
@@ -39,7 +39,7 @@ void output_test(uint32_t times){
     });
 
     output.seekp(headerPos);
-    WriteWaveHeader(output, audio.getWaveFormat(), size);
+    WriteWaveHeader(output, audio.get_audio_info(), size);
 
     output.close();
 }
@@ -47,11 +47,11 @@ void output_test(uint32_t times){
 void start_stream() {
     auto audio = Audio();
     auto server = AudioServer("0.0.0.0", 8888);
-    auto format = audio.getWaveFormat();
-    std::cout << "sample rate: " << format->nSamplesPerSec << std::endl;
-    std::cout << "bit sample: " << format->wBitsPerSample << std::endl;
-    std::cout << "format: " << format->wFormatTag << std::endl;
-    std::cout << "channel: " << format->nChannels << std::endl;
+    auto format = audio.get_audio_info();
+    std::cout << "sample rate: " << format.sample_rate << std::endl;
+    std::cout << "bit sample: " << format.bits << std::endl;
+    std::cout << "format: " << format.format << std::endl;
+    std::cout << "channel: " << format.channels << std::endl;
     server.start();
     bool running = true;
     std::thread capture_thread([&server, &audio, &running, &format](){
@@ -59,11 +59,10 @@ void start_stream() {
             if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
             std::cout << "client connected." << std::endl;
 
-//            std::cout << "sampleRate: " <<
-            server.send_data((const char *) &format->nSamplesPerSec, 4);
-            server.send_data((const char *) &format->wBitsPerSample, 2);
-            server.send_data((const char *) &format->wFormatTag, 2);
-            server.send_data((const char *) &format->nChannels, 2);
+            server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
+            server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
+            server.send_data(reinterpret_cast<const char *>(&format.format), 2);
+            server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
 
             audio.capture([&server, &running](auto data, auto len){
                 return server.send_data(data, len) && running;
@@ -81,6 +80,6 @@ void start_stream() {
 }
 
 int main(){
-//    output_test(10);
+    // output_test(10);
     start_stream();
 }

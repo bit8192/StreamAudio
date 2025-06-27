@@ -7,7 +7,7 @@ if (WIN32)
     set(PLATFORM "windows")
 elseif (LINUX)
     set(PLATFORM "linux")
-    set(STREAM_SOUND_LINK_LIBRARIES pulseaudio libpulse)
+    set(STREAM_SOUND_LINK_LIBRARIES pulse pulse-simple)
 endif ()
 
 add_executable(StreamSound main.cpp

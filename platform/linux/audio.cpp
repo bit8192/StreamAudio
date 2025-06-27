@@ -4,13 +4,14 @@
 
 #include "../audio.h"
 
+#include <pulse/error.h>
+#include <pulse/pulseaudio.h>
 #include <chrono>
+#include <iostream>
 
 #include "../../exceptions.h"
 
 
-Audio::Audio() {
-}
 
 void throw_exception(std::string msg, const int error) {
     msg += pa_strerror(error);
@@ -42,8 +43,9 @@ std::string get_default_output_monitor() {
     pa_operation *op = pa_context_get_sink_info_list(
         context, [](pa_context *context, const pa_sink_info *sink_info, int eol, void *sinks) {
             if (eol < 0) {
-                std::cerr << "查询设备错误: " << pa_strerror(pa_context_errno(context)) << std::endl;
-                return;
+                std::string msg = "查询设备错误: ";
+                msg += pa_strerror(pa_context_errno(context));
+                throw AudioException(msg.c_str());
             }
             if (!sink_info) return;
             static_cast<std::vector<pa_sink_info> *>(sinks)->push_back(*sink_info);
@@ -88,14 +90,19 @@ const pa_sample_spec ss = {
     .channels = 2 // 立体声
 };
 
-void Audio::capture(const std::function<bool(const char *, uint32_t)> &callback) {
-
-    pa_simple *s = nullptr;
-    int error;
-
+Audio::Audio() {
     // 创建 PulseAudio 捕获流（监控音频输出）
     const auto default_sink_monitor_name = get_default_output_monitor();
-    s = pa_simple_new(
+
+    pa_buffer_attr buffer_attr = {
+        .maxlength = 4 * 1024,
+        .tlength = (uint32_t) -1,  // 目标缓冲区长度
+        .prebuf = (uint32_t) -1,
+        .minreq = BUFFER_SIZE,       // 最小请求大小
+        .fragsize = BUFFER_SIZE      // 片段大小
+    };
+
+    pulse = pa_simple_new(
         nullptr, // 默认服务器
         "AudioCapture", // 应用名
         PA_STREAM_RECORD, // 捕获模式
@@ -103,27 +110,43 @@ void Audio::capture(const std::function<bool(const char *, uint32_t)> &callback)
         "Record", // 流描述
         &ss, // 采样格式
         nullptr, // 默认声道映射
-        nullptr, // 默认缓冲属性
+        &buffer_attr, // 默认缓冲属性
         &error // 错误码
     );
 
-    if (!s) throw_exception("PulseAudio 错误: ", error);
+    if (!pulse) throw_exception("PulseAudio 错误: ", error);
+}
 
+void Audio::capture(const std::function<bool(const char *, uint32_t)> &callback) {
     uint8_t buffer[BUFFER_SIZE];
-
-    auto start_time = std::chrono::high_resolution_clock::now();
     bool is_continue = true;
     while (is_continue) {
-        auto len = pa_simple_read(s, buffer, sizeof(buffer), &error);
+        const auto len = pa_simple_read(pulse, buffer, sizeof(buffer), &error);
         if (len < 0) {
             throw_exception("PulseAudio 读取错误: ", error);
         }
-        is_continue = callback(buffer, BUFFER_SIZE);
+        is_continue = callback(reinterpret_cast<const char *>(buffer), BUFFER_SIZE);
     }
-
-    // 清理
-    pa_simple_free(s);
 }
 
+audio_info Audio::get_audio_info() {
+    uint16_t bits = 0;
+    if (ss.format == PA_SAMPLE_S16LE) {
+        bits = 16;
+    }else if (ss.format == PA_SAMPLE_S32LE) {
+        bits = 32;
+    }else throw AudioException("unsupported bits");
+    uint16_t format = 1;
+    if (ss.format != PA_SAMPLE_S16LE) throw AudioException("unsupported format");
+    return {
+        ss.rate,
+        bits,
+        format,
+        ss.channels
+    };
+}
+
+
 Audio::~Audio() {
+    pa_simple_free(pulse);
 }

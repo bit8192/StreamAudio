@@ -17,12 +17,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #endif
+#include <condition_variable>
+#include <thread>
 
 class AudioServer {
 private:
-    SOCKET server_socket;
-    SOCKET client_socket = INVALID_SOCKET;
-    struct sockaddr_in client_addr{};
+    int server_socket;
+    int client_socket = -1;
+    sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
     bool running = false;
     std::thread accept_thread;
