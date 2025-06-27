@@ -17,6 +17,7 @@
 #include <pulse/pulseaudio.h>
 #endif
 #include <functional>
+#include <cstdint>
 
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
@@ -42,8 +43,6 @@ struct WAVEFILEHEADER {
 class Audio {
 private:
     HRESULT hr;
-    REFERENCE_TIME hnsRequestedDuration = REFTIMES_PER_SEC;
-    REFERENCE_TIME hnsActualDuration;
     uint32_t bufferFrameCount = 0;
     uint32_t numFramesAvailable = 0;
     IMMDeviceEnumerator* pEnumerator = nullptr;
@@ -54,7 +53,6 @@ private:
     unsigned int packetLength = 0;
     uint8_t* pData = nullptr;
     uint32_t flags = 0;
-    void generateSilence(uint8_t* buffer, uint32_t size);
 public:
     Audio();
 

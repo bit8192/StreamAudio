@@ -45,9 +45,19 @@ void AudioServer::accept_runner() {
     while (running){
         client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len);
         while (client_socket != INVALID_SOCKET){
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            {
+                std::unique_lock<std::mutex> lock(mutex_wait_client);
+                cv_wait_client.notify_all();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds (100));
         }
     }
+}
+
+bool AudioServer::wait_client(const std::chrono::milliseconds &duration) {
+//    if (client_socket != INVALID_SOCKET) return true;
+    std::unique_lock<std::mutex> lock(mutex_wait_client);
+    return cv_wait_client.wait_for(lock, duration) == std::cv_status::no_timeout;
 }
 
 void AudioServer::start() {
@@ -59,11 +69,13 @@ void AudioServer::start() {
     accept_thread = std::thread(&AudioServer::accept_runner, this);
 }
 
-void AudioServer::send_data(const char *data, int size) {
-    if (client_socket == INVALID_SOCKET) return;
+bool AudioServer::send_data(const char *data, int size) {
+    if (client_socket == INVALID_SOCKET) return false;
     if (send(client_socket, data, size, 0) == SOCKET_ERROR){
         client_socket = INVALID_SOCKET;
+        return false;
     }
+    return true;
 }
 
 AudioServer::~AudioServer() {

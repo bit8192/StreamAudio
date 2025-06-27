@@ -11,22 +11,6 @@ const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 const IID IID_IAudioClient = __uuidof(IAudioClient);
 const IID IID_IAudioCaptureClient = __uuidof(IAudioCaptureClient);
 
-HRESULT WriteWaveHeader(HANDLE hFile, WAVEFORMATEX* pwfx, DWORD dataSize) {
-    WAVEFILEHEADER header;
-
-    header.audioFormat = pwfx->wFormatTag;
-    header.numChannels = pwfx->nChannels;
-    header.sampleRate = pwfx->nSamplesPerSec;
-    header.bitsPerSample = pwfx->wBitsPerSample;
-    header.byteRate = pwfx->nSamplesPerSec * pwfx->nChannels * pwfx->wBitsPerSample / 8;
-    header.blockAlign = pwfx->nChannels * pwfx->wBitsPerSample / 8;
-    header.dataSize = dataSize;
-    header.riffSize = dataSize + sizeof(header) - 8;
-
-    DWORD written;
-    return WriteFile(hFile, &header, sizeof(header), &written, nullptr) ? S_OK : E_FAIL;
-}
-
 Audio::Audio() {
     hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr)) throw AudioException("core initialize failed.");
@@ -64,9 +48,18 @@ Audio::Audio() {
         pwfx = pNewFormat;
     }
 
+    // 修改Audio构造函数中的初始化逻辑
+    REFERENCE_TIME hnsRequestedDuration = 50 * 10000; // 50ms (单位: 100纳秒)
+    REFERENCE_TIME hnsMinDuration;
+    hr = pAudioClient->GetDevicePeriod(nullptr, &hnsMinDuration); // 获取设备支持的最小周期
+
+// 使用最小周期或50ms中的较大者
+    REFERENCE_TIME hnsBufferDuration = (hnsRequestedDuration > hnsMinDuration)
+                                       ? hnsRequestedDuration : hnsMinDuration;
+
     hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
                                   AUDCLNT_STREAMFLAGS_LOOPBACK,
-                                  hnsRequestedDuration,
+                                  hnsBufferDuration,
                                   0,
                                   pwfx,
                                   nullptr);
@@ -78,16 +71,11 @@ Audio::Audio() {
     hr = pAudioClient->GetService(IID_IAudioCaptureClient, (void**)&pCaptureClient);
     if (FAILED(hr)) throw AudioException("get audio client service failed.");
 
-    // 写入空的WAV文件头（稍后填充实际大小）
-//    WriteWaveHeader(hFile, pwfx, 0);
-
-    hnsActualDuration = (REFERENCE_TIME)((double)REFTIMES_PER_SEC * bufferFrameCount / pwfx->nSamplesPerSec);
-
     hr = pAudioClient->Start();
     if (FAILED(hr)) throw AudioException("start audio capture failed.");
 }
 
-void Audio::generateSilence(BYTE *buffer, UINT32 size) {
+void generateSilence(const WAVEFORMATEX* pwfx, BYTE *buffer, UINT32 size) {
     if (pwfx->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) {
         // 浮点格式静音为0.0f
         auto* floatBuffer = reinterpret_cast<float*>(buffer);
@@ -105,19 +93,14 @@ const WAVEFORMATEX *Audio::getWaveFormat() {
 }
 
 void Audio::capture(const std::function<bool(const char *, UINT32)> &callback) {
-    bool isContinue = true;
+    bool is_continue = true;
 
-    while (isContinue) {
-        auto waitTime = static_cast<DWORD>(hnsActualDuration / REFTIMES_PER_MILLISEC / 2);
-        if (waitTime < 1) waitTime = 1;
-
-        Sleep(waitTime);
-
+    while (is_continue) {
         hr = pCaptureClient->GetNextPacketSize(&packetLength);
         if (FAILED(hr)) throw AudioException("get nextPacket failed.");
 
         while (packetLength != 0) {
-            hr = pCaptureClient->GetBuffer(&pData, &numFramesAvailable, &flags, nullptr, nullptr);
+            hr = pCaptureClient->GetBuffer(&pData, &numFramesAvailable, (DWORD*) &flags, nullptr, nullptr);
             if (FAILED(hr)) throw AudioException("get buffer failed.");
 
             DWORD bytesToWrite = numFramesAvailable * pwfx->nBlockAlign;
@@ -125,10 +108,10 @@ void Audio::capture(const std::function<bool(const char *, UINT32)> &callback) {
             if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
                 // 写入静音数据
                 std::vector<BYTE> silence(bytesToWrite);
-                generateSilence(silence.data(), bytesToWrite);
-                isContinue = callback(reinterpret_cast<const char*>(silence.data()), bytesToWrite);
+                generateSilence(pwfx, silence.data(), bytesToWrite);
+                is_continue = callback(reinterpret_cast<const char*>(silence.data()), bytesToWrite);
             } else {
-                isContinue = callback((const char *) pData, bytesToWrite);
+                is_continue = callback((const char *) pData, bytesToWrite);
             }
 
             hr = pCaptureClient->ReleaseBuffer(numFramesAvailable);
