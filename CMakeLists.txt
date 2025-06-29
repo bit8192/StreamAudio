@@ -16,6 +16,9 @@ add_executable(StreamSound main.cpp
         exceptions.h
         exceptions.cpp
         platform/${PLATFORM}/audio_server.cpp
-        platform/audio_server.h)
+        platform/audio_server.h
+        logger.cpp
+        logger.h
+        platform/audio_server_common.cpp)
 
 target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})

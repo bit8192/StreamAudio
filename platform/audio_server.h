@@ -19,26 +19,32 @@
 #endif
 #include <condition_variable>
 #include <thread>
+#include <vector>
+
+#include "audio.h"
+
+const int PACKAGE_SIZE = 1200;
+
+typedef struct client_info {
+    sockaddr_in address{};
+    std::chrono::system_clock::time_point active_time;
+} client_info;
 
 class AudioServer {
 private:
+    audio_info audio_info;
     int server_socket;
-    int client_socket = -1;
-    sockaddr_in client_addr{};
-    socklen_t client_len = sizeof(client_addr);
+    std::vector<client_info> clients;
     bool running = false;
-    std::thread accept_thread;
-    void accept_runner();
-    std::mutex mutex_wait_client;
-    std::condition_variable cv_wait_client;
+    std::thread server_thread;
+    void receive_data();
+    void handle_message(const sockaddr_in& client, const char* data, int length);
 public:
-    AudioServer(const char* ip, int port);
-
-    bool wait_client(const std::chrono::milliseconds& duration);
+    AudioServer(int port, const struct audio_info& audio_info);
 
     void start();
 
-    bool send_data(const char* data, int size);
+    void send_data(const char* data, int size) const;
 
     virtual ~AudioServer();
 };

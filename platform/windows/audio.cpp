@@ -90,7 +90,7 @@ void generateSilence(const WAVEFORMATEX* pwfx, BYTE *buffer, UINT32 size) {
 
 audio_info Audio::get_audio_info() {
     return {
-        pwfx->nSamplesPerSec,
+        static_cast<uint32_t>(pwfx->nSamplesPerSec),
         pwfx->wBitsPerSample,
         pwfx->wFormatTag,
         pwfx->nChannels,
@@ -116,7 +116,7 @@ void Audio::capture(const std::function<bool(const char *, UINT32)> &callback) {
                 generateSilence(pwfx, silence.data(), bytesToWrite);
                 is_continue = callback(reinterpret_cast<const char*>(silence.data()), bytesToWrite);
             } else {
-                is_continue = callback((const char *) pData, bytesToWrite);
+                is_continue = callback(reinterpret_cast<const char *>(pData), bytesToWrite);
             }
 
             hr = pCaptureClient->ReleaseBuffer(numFramesAvailable);

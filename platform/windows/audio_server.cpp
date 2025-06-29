@@ -4,78 +4,66 @@
 
 #include "../audio_server.h"
 #include "../../exceptions.h"
+#include "../../logger.h"
 
-AudioServer::AudioServer(const char *ip, int port) {
+const char *AUDIO_SERVER_LOGTAG = "audio_server";
+
+AudioServer::AudioServer(const int port, const struct audio_info &audio_info): audio_info(audio_info) {
     WSADATA wsaData;
-    if(WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
-    server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP);
     if (server_socket == INVALID_SOCKET) {
         auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
         throw SocketException(error.c_str());
     }
 
-    // 设置SO_REUSEADDR选项
-    int opt = 1;
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR,
-               (const char*)&opt, sizeof(opt));
-
-    struct sockaddr_in server_addr{};
-    memset(&server_addr, 0, sizeof(server_addr));
+    sockaddr_in server_addr{};
     server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     server_addr.sin_port = htons(port);
 
-    if (ip == nullptr || strcmp(ip, "0.0.0.0") == 0) {
-        server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else {
-        server_addr.sin_addr.s_addr = inet_addr(ip);
-    }
-
-    if (bind(server_socket, (struct sockaddr*)&server_addr,
-             sizeof(server_addr)) == SOCKET_ERROR) {
+    if (bind(server_socket, reinterpret_cast<sockaddr *>(&server_addr), sizeof(server_addr)) == SOCKET_ERROR) {
         throw SocketException("bind failed");
-    }
-
-    if (listen(server_socket, SOMAXCONN) == SOCKET_ERROR) {
-        throw SocketException("listen failed");
     }
 }
 
-void AudioServer::accept_runner() {
-    while (running){
-        client_socket = accept(server_socket, (struct sockaddr *) &client_addr, &client_len);
-        while (client_socket != INVALID_SOCKET){
-            {
-                std::unique_lock<std::mutex> lock(mutex_wait_client);
-                cv_wait_client.notify_all();
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds (100));
+void AudioServer::start() {
+    if (running) {
+        running = false;
+        if (server_thread.joinable()) server_thread.join();
+    }
+    running = true;
+    server_thread = std::thread(&AudioServer::receive_data, this);
+}
+
+void AudioServer::receive_data() {
+    char buffer[PACKAGE_SIZE];
+    sockaddr_in client_addr{};
+    int addr_len = sizeof(client_addr);
+    int len;
+    while (running) {
+        len = recvfrom(server_socket, buffer, PACKAGE_SIZE, 0, reinterpret_cast<sockaddr *>(&client_addr), &addr_len);
+        if (len == SOCKET_ERROR) {
+            Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + len);
+            continue;
+        }
+        try {
+            handle_message(client_addr, buffer, len);
+        }catch (const std::exception &e) {
+            Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
         }
     }
 }
 
-bool AudioServer::wait_client(const std::chrono::milliseconds &duration) {
-//    if (client_socket != INVALID_SOCKET) return true;
-    std::unique_lock<std::mutex> lock(mutex_wait_client);
-    return cv_wait_client.wait_for(lock, duration) == std::cv_status::no_timeout;
-}
-
-void AudioServer::start() {
-    if (accept_thread.joinable()){
-        running = false;
-        accept_thread.join();
+void AudioServer::send_data(const char *data, const int size) const {
+    for (auto client: clients) {
+        try {
+            sendto(server_socket, data, size, 0, reinterpret_cast<sockaddr *>(&client), sizeof(client));
+        } catch (const SocketException &e) {
+            Logger::e(AUDIO_SERVER_LOGTAG, "send data failed", e);
+        }
     }
-    running = true;
-    accept_thread = std::thread(&AudioServer::accept_runner, this);
-}
-
-bool AudioServer::send_data(const char *data, int size) {
-    if (client_socket == INVALID_SOCKET) return false;
-    if (send(client_socket, data, size, 0) == SOCKET_ERROR){
-        client_socket = INVALID_SOCKET;
-        return false;
-    }
-    return true;
 }
 
 AudioServer::~AudioServer() {
