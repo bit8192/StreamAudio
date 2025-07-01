@@ -11,7 +11,7 @@
 #include <thread>
 #include <condition_variable>
 
-#pragma comment(lib, "ws2_32.lib")  // 这行是关键
+#pragma comment(lib, "ws2_32.lib")
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -39,6 +39,7 @@ private:
     std::thread server_thread;
     void receive_data();
     void handle_message(const sockaddr_in& client, const char* data, int length);
+static char FUN_PING = 0;
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
