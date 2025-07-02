@@ -4,6 +4,7 @@
 #include <thread>
 #include "platform/audio_server.h"
 #include "platform/audio.h"
+#include "tools/crypto.h"
 
 
 void WriteWaveHeader(std::ofstream& ofstream, const audio_info pwfx, uint32_t dataSize) {
@@ -46,7 +47,7 @@ void output_test(uint32_t times){
 
 void start_stream() {
     auto audio = Audio();
-    auto server = AudioServer("0.0.0.0", 8888);
+    auto server = AudioServer(8888, audio.get_audio_info());
     auto format = audio.get_audio_info();
     std::cout << "sample rate: " << format.sample_rate << std::endl;
     std::cout << "bit sample: " << format.bits << std::endl;
@@ -56,18 +57,19 @@ void start_stream() {
     bool running = true;
     std::thread capture_thread([&server, &audio, &running, &format](){
         while (running) {
-            if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
-            std::cout << "client connected." << std::endl;
-
-            server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
-            server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
-            server.send_data(reinterpret_cast<const char *>(&format.format), 2);
-            server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
+            // if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
+            // std::cout << "client connected." << std::endl;
+            //
+            // server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
+            // server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
+            // server.send_data(reinterpret_cast<const char *>(&format.format), 2);
+            // server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
 
             audio.capture([&server, &running](auto data, auto len){
-                return server.send_data(data, len) && running;
+                server.send_data(data, len);
+                return running;
             });
-            std::cout << "client lost." << std::endl;
+            // std::cout << "client lost." << std::endl;
         }
     });
     while (running){
@@ -79,7 +81,15 @@ void start_stream() {
     capture_thread.join();
 }
 
+void test_crypto() {
+    const ED25519 signKeyPair = ED25519::load_private_key_from_file("private_key.pem");
+    // signKeyPair.write_private_key_to_file("private_key.pem");
+    signKeyPair.write_public_key_to_file("public_key1.pem");
+}
+
 int main(){
     // output_test(10);
-    start_stream();
+    // start_stream();
+    // test_crypto();
+    std::cout << "home dir: " << std::getenv("USERPROFILE");
 }

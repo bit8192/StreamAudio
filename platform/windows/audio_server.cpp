@@ -3,18 +3,47 @@
 //
 
 #include "../audio_server.h"
+
+#include <filesystem>
+#include <fstream>
+
 #include "../../exceptions.h"
 #include "../../logger.h"
 
-const char *AUDIO_SERVER_LOGTAG = "audio_server";
+constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
+constexpr std::string HOME_DIR = std::getenv("USERPROFILE");
+constexpr auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
+constexpr auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
+constexpr auto AUTHENTICATED_FILE = CONFIG_PATH + "\\sign-key.pem";
 
-AudioServer::AudioServer(const int port, const struct audio_info &audio_info): audio_info(audio_info) {
+AudioServer::AudioServer(const int port, const struct audio_info &audio_info): ecdh_key_pair(X25519::generate()),
+                                                                               sign_key_pair(ED25519::empty()),
+                                                                               audio_info(audio_info) {
+    if (!std::filesystem::exists(CONFIG_PATH)) {
+        if (std::filesystem::create_directory(CONFIG_PATH)) {
+            throw AudioException("Failed to create config directory");
+        }
+    }
+    if (std::filesystem::exists(SIGN_KEY_FILE)) {
+        sign_key_pair = ED25519::load_public_key_from_file(SIGN_KEY_FILE);
+    }else {
+        sign_key_pair = ED25519::generate();
+        sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
+    }
+    if (std::filesystem::exists(AUTHENTICATED_FILE)) {
+        std::ifstream auth_file(AUTHENTICATED_FILE);
+        std::string line;
+        while (std::getline(auth_file, line)) {
+            if (line.empty()) continue;
+
+        }
+    }
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
     server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP);
     if (server_socket == INVALID_SOCKET) {
-        auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
+        const auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
         throw SocketException(error.c_str());
     }
 

@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 23)
 
 if (WIN32)
     set(PLATFORM "windows")
-    set(STREAM_SOUND_LINK_LIBRARIES ${STREAM_SOUND_LINK_LIBRARIES} ws2_32)
+    set(STREAM_SOUND_LINK_LIBRARIES ws2_32)
 elseif (LINUX)
     set(PLATFORM "linux")
-    set(STREAM_SOUND_LINK_LIBRARIES ${STREAM_SOUND_LINK_LIBRARIES} pulse pulse-simple)
+    set(STREAM_SOUND_LINK_LIBRARIES pulse pulse-simple)
 endif ()
 
 add_executable(StreamSound main.cpp
@@ -25,7 +25,8 @@ add_executable(StreamSound main.cpp
         tools/crypto.h)
 
 find_package(OpenSSL REQUIRED)
-set(STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
 
+message("LIBS=${STREAM_SOUND_LINK_LIBRARIES}")
 target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})
 target_link_directories(StreamSound PRIVATE ${OPENSSL_INCLUDE_DIR})

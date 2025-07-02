@@ -23,4 +23,12 @@ public:
     [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
 };
 
+class CryptoException: public std::exception {
+private:
+    const char* msg;
+public:
+    explicit CryptoException(const char* msg);
+    [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
+};
+
 #endif //STREAMSOUND_EXCEPTIONS_H

@@ -13,9 +13,9 @@ bool operator==(const sockaddr_in & lhs, const sockaddr_in & rhs) {
 void AudioServer::handle_message(const sockaddr_in& client, const char* data, const int length) {
     if (length < 1) return;
     bool is_authenticated = false;
-    for (auto [address, active_time] : clients) {
-        if (address == client) {
-            active_time = std::chrono::high_resolution_clock::now();
+    for (auto c : clients) {
+        if (c.address == client) {
+            c.active_time = std::chrono::high_resolution_clock::now();
             is_authenticated = true;
             break;
         }
@@ -30,7 +30,7 @@ void AudioServer::handle_message(const sockaddr_in& client, const char* data, co
             case 1: //pong
                 return;
             case 2: //authentication request
-                if (!is_authenticated) clients.emplace_back(client, std::chrono::high_resolution_clock::now());
+                // if (!is_authenticated) clients.emplace_back(client, std::chrono::high_resolution_clock::now());
                 //todo send response
                 return;
             case 3: //authentication response

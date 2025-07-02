@@ -5,30 +5,41 @@
 #ifndef CRYPTO_H
 #define CRYPTO_H
 
+#include <string>
 #include <vector>
-#include <openssl/ec.h>
+#include <openssl/types.h>
 
-class Crypto {
+class KeyPair {
 public:
-    static EVP_PKEY* generate_ecc_keypair();
-
-    static std::vector<unsigned char> export_public_key(EVP_PKEY* pkey);
-
-    static std::vector<unsigned char> export_private_key(EVP_PKEY* pkey);
-
-    static EVP_PKEY* import_public_key(const std::vector<unsigned char>& pubkey_data);
-
-    static EVP_PKEY* import_private_key(const std::vector<unsigned char>& private_data);
-
-    static std::vector<unsigned char> derive_shared_secret(EVP_PKEY* prv_key, EVP_PKEY* pub_key);
-
-    static std::vector<unsigned char> derive_key_with_hkdf(
-        const std::vector<unsigned char> &shared_secret,
-        const std::vector<unsigned char> &salt,
-        const std::vector<unsigned char> &info,
-        size_t output_length
-    );
+    explicit KeyPair(EVP_PKEY *key, bool is_public);
+protected:
+    EVP_PKEY *key = nullptr;
+    bool is_public = false;
+public:
+    [[nodiscard]] std::vector<unsigned char> export_public_key() const;
+    [[nodiscard]] std::vector<unsigned char> export_private_key() const;
+    void write_public_key_to_file(const std::string& filename) const;
+    void write_private_key_to_file(const std::string& filename) const;
 };
 
+class ED25519: public KeyPair {
+    ED25519(EVP_PKEY *key, bool is_public);
+public:
+    static ED25519 empty();
+    static ED25519 generate();
+    static ED25519 load_public_key_from_file(const std::string& filename);
+    static ED25519 load_private_key_from_file(const std::string& filename);
+    static ED25519 load_public_key_from_mem(const std::vector<unsigned char>& data);
+    [[nodiscard]] std::vector<unsigned char> sign(const std::vector<unsigned char>& data) const;
+    [[nodiscard]] bool verify(const std::vector<unsigned char>& data, const std::vector<unsigned char>& signature) const;
+};
+
+class X25519: public KeyPair {
+    X25519(EVP_PKEY *key, bool is_public);
+public:
+    static X25519 generate();
+    static X25519 load_public_key_from_mem(const std::vector<unsigned char>& data);
+    [[nodiscard]] std::vector<unsigned char> derive_shared_secret(const X25519& pub_key) const;
+};
 
 #endif //CRYPTO_H

@@ -18,3 +18,10 @@ SocketException::SocketException(const char *msg): msg(msg) {
 const char *SocketException::what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW {
     return msg;
 }
+
+CryptoException::CryptoException(const char *msg): msg(msg) {
+}
+
+const char * CryptoException::what() const noexcept {
+    return msg;
+}
