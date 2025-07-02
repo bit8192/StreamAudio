@@ -1,9 +1,11 @@
+#include <cmath>
 #include <iostream>
 #include <ctime>
 #include <fstream>
 #include <thread>
 #include "platform/audio_server.h"
 #include "platform/audio.h"
+#include "tools/base64.h"
 #include "tools/crypto.h"
 
 
@@ -91,5 +93,7 @@ int main(){
     // output_test(10);
     // start_stream();
     // test_crypto();
-    std::cout << "home dir: " << std::getenv("USERPROFILE");
+    // std::cout << "home dir: " << std::getenv("USERPROFILE");
+    const std::string data = "SGVsbG8gd29ybGQh";
+    std::cout << Base64::encode(reinterpret_cast<const uint8_t *>(data.data()), data.size()) << std::endl;
 }

@@ -22,11 +22,12 @@ add_executable(StreamSound main.cpp
         logger.h
         platform/audio_server_common.cpp
         tools/crypto.cpp
-        tools/crypto.h)
+        tools/crypto.h
+        tools/base64.cpp
+        tools/base64.h)
 
 find_package(OpenSSL REQUIRED)
 list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
 
-message("LIBS=${STREAM_SOUND_LINK_LIBRARIES}")
 target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})
 target_link_directories(StreamSound PRIVATE ${OPENSSL_INCLUDE_DIR})

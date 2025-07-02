@@ -16,8 +16,8 @@ protected:
     EVP_PKEY *key = nullptr;
     bool is_public = false;
 public:
-    [[nodiscard]] std::vector<unsigned char> export_public_key() const;
-    [[nodiscard]] std::vector<unsigned char> export_private_key() const;
+    [[nodiscard]] std::vector<uint8_t> export_public_key() const;
+    [[nodiscard]] std::vector<uint8_t> export_private_key() const;
     void write_public_key_to_file(const std::string& filename) const;
     void write_private_key_to_file(const std::string& filename) const;
 };
@@ -29,17 +29,17 @@ public:
     static ED25519 generate();
     static ED25519 load_public_key_from_file(const std::string& filename);
     static ED25519 load_private_key_from_file(const std::string& filename);
-    static ED25519 load_public_key_from_mem(const std::vector<unsigned char>& data);
-    [[nodiscard]] std::vector<unsigned char> sign(const std::vector<unsigned char>& data) const;
-    [[nodiscard]] bool verify(const std::vector<unsigned char>& data, const std::vector<unsigned char>& signature) const;
+    static ED25519 load_public_key_from_mem(const std::vector<uint8_t>& data);
+    [[nodiscard]] std::vector<uint8_t> sign(const std::vector<uint8_t>& data) const;
+    [[nodiscard]] bool verify(const std::vector<uint8_t>& data, const std::vector<uint8_t>& signature) const;
 };
 
 class X25519: public KeyPair {
     X25519(EVP_PKEY *key, bool is_public);
 public:
     static X25519 generate();
-    static X25519 load_public_key_from_mem(const std::vector<unsigned char>& data);
-    [[nodiscard]] std::vector<unsigned char> derive_shared_secret(const X25519& pub_key) const;
+    static X25519 load_public_key_from_mem(const std::vector<uint8_t>& data);
+    [[nodiscard]] std::vector<uint8_t> derive_shared_secret(const X25519& pub_key) const;
 };
 
 #endif //CRYPTO_H

@@ -11,10 +11,10 @@
 #include "../../logger.h"
 
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
-constexpr std::string HOME_DIR = std::getenv("USERPROFILE");
-constexpr auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
-constexpr auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
-constexpr auto AUTHENTICATED_FILE = CONFIG_PATH + "\\sign-key.pem";
+const std::string HOME_DIR = std::getenv("USERPROFILE");
+const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
+const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
+const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\sign-key.pem";
 
 AudioServer::AudioServer(const int port, const struct audio_info &audio_info): ecdh_key_pair(X25519::generate()),
                                                                                sign_key_pair(ED25519::empty()),
@@ -35,7 +35,9 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): e
         std::string line;
         while (std::getline(auth_file, line)) {
             if (line.empty()) continue;
-
+            const auto index = line.find(' ');
+            if (index == std::string::npos) continue;
+            // client_keys.emplace_back(line.substr(0, index), ED25519::load_public_key_from_mem());
         }
     }
     WSADATA wsaData;

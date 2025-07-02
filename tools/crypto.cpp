@@ -71,30 +71,30 @@ ED25519 ED25519::load_private_key_from_file(const std::string &filename) {
     return {pkey, false};
 }
 
-ED25519 ED25519::load_public_key_from_mem(const std::vector<unsigned char> &data) {
+ED25519 ED25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
     const auto pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, nullptr, data.data(), data.size());
     if(!pkey) handleErrors();
     return {pkey, true};
 }
 
-X25519 X25519::load_public_key_from_mem(const std::vector<unsigned char> &data) {
+X25519 X25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
     const auto pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr, data.data(), data.size());
     if(!pkey) handleErrors();
     return {pkey, true};
 }
 
-std::vector<unsigned char> KeyPair::export_public_key() const {
+std::vector<uint8_t> KeyPair::export_public_key() const {
     if (!is_public) throw CryptoException("this is not a public key");
     size_t len = 32;
-    std::vector<unsigned char> pubkey(len, 0);
+    std::vector<uint8_t> pubkey(len, 0);
     EVP_PKEY_get_raw_public_key(key, pubkey.data(), &len);
     return pubkey;
 }
 
-std::vector<unsigned char> KeyPair::export_private_key() const {
+std::vector<uint8_t> KeyPair::export_private_key() const {
     if (is_public) throw CryptoException("this is not a private key");
     size_t len = 32;
-    std::vector<unsigned char> prev_key(len, 0);
+    std::vector<uint8_t> prev_key(len, 0);
     EVP_PKEY_get_raw_private_key(key, prev_key.data(), &len);
     return prev_key;
 }
@@ -118,7 +118,7 @@ void KeyPair::write_private_key_to_file(const std::string &filename) const {
     BIO_free(bio);
 }
 
-std::vector<unsigned char> ED25519::sign(const std::vector<unsigned char> &data) const {
+std::vector<uint8_t> ED25519::sign(const std::vector<uint8_t> &data) const {
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (!mdctx) handleErrors();
 
@@ -133,7 +133,7 @@ std::vector<unsigned char> ED25519::sign(const std::vector<unsigned char> &data)
         handleErrors();
     }
 
-    std::vector<unsigned char> signature(siglen);
+    std::vector<uint8_t> signature(siglen);
     if (EVP_DigestSign(mdctx, signature.data(), &siglen, data.data(), data.size()) <= 0) {
         EVP_MD_CTX_free(mdctx);
         handleErrors();
@@ -143,7 +143,7 @@ std::vector<unsigned char> ED25519::sign(const std::vector<unsigned char> &data)
     return signature;
 }
 
-bool ED25519::verify(const std::vector<unsigned char> &data, const std::vector<unsigned char> &signature) const {
+bool ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) const {
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (!mdctx) handleErrors();
 
@@ -161,7 +161,7 @@ bool ED25519::verify(const std::vector<unsigned char> &data, const std::vector<u
     return false;
 }
 
-std::vector<unsigned char> X25519::derive_shared_secret(const X25519 &pub_key) const {
+std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key) const {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(key, nullptr);
     if (!ctx) handleErrors();
 
@@ -172,7 +172,7 @@ std::vector<unsigned char> X25519::derive_shared_secret(const X25519 &pub_key) c
     size_t secret_len;
     if (EVP_PKEY_derive(ctx, nullptr, &secret_len) <= 0) handleErrors();
 
-    std::vector<unsigned char> shared_secret(secret_len);
+    std::vector<uint8_t> shared_secret(secret_len);
     if (EVP_PKEY_derive(ctx, shared_secret.data(), &secret_len) <= 0) handleErrors();
 
     EVP_PKEY_CTX_free(ctx);
