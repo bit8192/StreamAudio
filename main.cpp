@@ -92,8 +92,5 @@ void test_crypto() {
 int main(){
     // output_test(10);
     // start_stream();
-    // test_crypto();
-    // std::cout << "home dir: " << std::getenv("USERPROFILE");
-    const std::string data = "SGVsbG8gd29ybGQh";
-    std::cout << Base64::encode(reinterpret_cast<const uint8_t *>(data.data()), data.size()) << std::endl;
+    test_crypto();
 }
