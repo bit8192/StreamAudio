@@ -9,7 +9,7 @@
 #include "tools/crypto.h"
 
 
-void WriteWaveHeader(std::ofstream& ofstream, const audio_info pwfx, uint32_t dataSize) {
+void WriteWaveHeader(std::ofstream &ofstream, const audio_info pwfx, uint32_t dataSize) {
     WAVEFILEHEADER header;
 
     header.audioFormat = pwfx.format;
@@ -24,7 +24,7 @@ void WriteWaveHeader(std::ofstream& ofstream, const audio_info pwfx, uint32_t da
     ofstream.write(reinterpret_cast<const char *>(&header), sizeof(header));
 }
 
-void output_test(uint32_t times){
+void output_test(uint32_t times) {
     std::ofstream output("output.wav", std::ios::binary);
     auto start = std::time(nullptr);
     auto audio = Audio();
@@ -57,7 +57,7 @@ void start_stream() {
     std::cout << "channel: " << format.channels << std::endl;
     server.start();
     bool running = true;
-    std::thread capture_thread([&server, &audio, &running, &format](){
+    std::thread capture_thread([&server, &audio, &running, &format]() {
         while (running) {
             // if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
             // std::cout << "client connected." << std::endl;
@@ -67,14 +67,14 @@ void start_stream() {
             // server.send_data(reinterpret_cast<const char *>(&format.format), 2);
             // server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
 
-            audio.capture([&server, &running](auto data, auto len){
+            audio.capture([&server, &running](auto data, auto len) {
                 server.send_data(data, len);
                 return running;
             });
             // std::cout << "client lost." << std::endl;
         }
     });
-    while (running){
+    while (running) {
         std::string cmd;
         std::cin >> cmd;
         if (cmd.starts_with("quit")) break;
@@ -89,8 +89,8 @@ void test_crypto() {
     signKeyPair.write_public_key_to_file("public_key1.pem");
 }
 
-int main(){
+int main() {
     // output_test(10);
     // start_stream();
-    test_crypto();
+    // test_crypto();
 }

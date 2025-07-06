@@ -9,11 +9,10 @@
 #include <vector>
 
 
-class Base64 {
-public:
-    static std::string encode(const std::vector<uint8_t>& data);
-    static std::string encode(const uint8_t* data, std::size_t size);
-    static std::vector<uint8_t> decode(const std::string& data);
+namespace Base64 {
+    std::string encode(const std::vector<uint8_t>& data);
+    std::string encode(const uint8_t* data, std::size_t size);
+    std::vector<uint8_t> decode(const std::string& data);
 };
 
 

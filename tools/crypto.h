@@ -39,7 +39,7 @@ class X25519: public KeyPair {
 public:
     static X25519 generate();
     static X25519 load_public_key_from_mem(const std::vector<uint8_t>& data);
-    [[nodiscard]] std::vector<uint8_t> derive_shared_secret(const X25519& pub_key) const;
+    [[nodiscard]] std::vector<uint8_t> derive_shared_secret(const X25519& pub_key, const std::vector<uint8_t>& salt) const;
 };
 
 #endif //CRYPTO_H

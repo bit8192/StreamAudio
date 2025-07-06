@@ -4,11 +4,15 @@
 
 #include "crypto.h"
 
+#include <memory>
 #include <string>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <openssl/core_names.h>
 #include "../exceptions.h"
+
+constexpr std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
 
 void handleErrors() {
     const auto error = BIO_new(BIO_s_mem());
@@ -30,6 +34,63 @@ EVP_PKEY * generate_ecc_keypair(const int id) {
 
     EVP_PKEY_CTX_free(pctx);
     return pkey;
+}
+
+// 使用 EVP_MAC 实现 HMAC 派生密钥
+std::vector<uint8_t> hmac_derive_key(
+    const std::vector<uint8_t>& shared_secret,
+    const std::vector<uint8_t>& salt,
+    const std::vector<uint8_t>& info) {
+
+    std::vector<uint8_t> derived_key(32); // 假设输出 32 字节（SHA-256）
+
+    // 创建 EVP_MAC 上下文
+    EVP_MAC *mac = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
+    if (!mac) {
+        throw CryptoException("Error: EVP_MAC_fetch failed");
+        return {};
+    }
+
+    // 配置 HMAC 参数（算法为 SHA-256）
+    OSSL_PARAM params[2];
+    params[0] = OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST, "SHA256", 0);
+    params[1] = OSSL_PARAM_construct_end();
+
+    // 创建 EVP_MAC_CTX
+    const std::unique_ptr<EVP_MAC_CTX, decltype(&EVP_MAC_CTX_free)> ctx(EVP_MAC_CTX_new(mac), EVP_MAC_CTX_free);
+    if (!ctx) {
+        EVP_MAC_free(mac);
+        throw CryptoException("Error: EVP_MAC_CTX_new failed");
+    }
+
+    // 初始化 HMAC（密钥为 shared_secret）
+    if (EVP_MAC_init(ctx.get(), shared_secret.data(), shared_secret.size(), params) != 1) {
+        EVP_MAC_free(mac);
+        throw CryptoException("Error: EVP_MAC_init failed");
+    }
+
+    // 可选：添加盐值（Salt）
+    if (!salt.empty() && EVP_MAC_update(ctx.get(), salt.data(), salt.size()) != 1) {
+        EVP_MAC_free(mac);
+        throw CryptoException("Error: EVP_MAC_update (salt) failed");
+    }
+
+    // 添加上下文信息（Info）
+    if (!info.empty() && EVP_MAC_update(ctx.get(), info.data(), info.size()) != 1) {
+        EVP_MAC_free(mac);
+        throw CryptoException("Error: EVP_MAC_update (info) failed");
+    }
+
+    // 获取派生密钥
+    size_t out_len = derived_key.size();
+    if (EVP_MAC_final(ctx.get(), derived_key.data(), &out_len, out_len) != 1) {
+        EVP_MAC_free(mac);
+        throw CryptoException("Error: EVP_MAC_final failed");
+    }
+
+    // 清理资源
+    EVP_MAC_free(mac);
+    return derived_key;
 }
 
 KeyPair::KeyPair(EVP_PKEY *key, const bool is_public): key(key), is_public(is_public) {
@@ -161,7 +222,7 @@ bool ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t
     return false;
 }
 
-std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key) const {
+std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key, const std::vector<uint8_t>& salt) const {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(key, nullptr);
     if (!ctx) handleErrors();
 
@@ -176,5 +237,6 @@ std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key) const {
     if (EVP_PKEY_derive(ctx, shared_secret.data(), &secret_len) <= 0) handleErrors();
 
     EVP_PKEY_CTX_free(ctx);
-    return shared_secret;
+
+    return hmac_derive_key(shared_secret, salt, derive_key_info);
 }
