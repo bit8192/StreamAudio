@@ -104,13 +104,15 @@ void AudioServer::handle_message(const sockaddr_in &addr, const char *data, cons
             }
             client->play = true;
 
-            const auto encrypted_data = encrypt(
-                std::vector<uint8_t>(&audio_info, (&audio_info) + sizeof(audio_info)),
-                client->session_key
-            );
+            std::vector<uint8_t> audio_info_pack(sizeof(audio_info) + 1);
+            audio_info_pack[0] = PACK_TYPE_AUDIO_INFO;
+            memcpy(&audio_info_pack[1], &audio_info, sizeof(audio_info));
+            const auto encrypted_data = encrypt(audio_info_pack,client->session_key);
             char res[1 + encrypted_data.size() + 64];
             res[0] = PACK_TYPE_AUDIO_INFO;
-            //TODO 构建音频信息包
+            memcpy(res + 1, encrypted_data.data(), encrypted_data.size());
+            const auto sign = sign_key_pair.sign(encrypted_data);
+            memcpy(res + 1 + encrypted_data.size(), sign.data(), sign.size());
             sendto(server_socket, res, 1 + encrypted_data.size() + 64, 0, (sockaddr *) &addr, sizeof(sockaddr_in));
             break;
         }

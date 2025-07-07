@@ -60,30 +60,30 @@ void start_stream() {
     std::cout << "channel: " << format.channels << std::endl;
     server.start();
     bool running = true;
-    std::thread capture_thread([&server, &audio, &running, &format]() {
-        while (running) {
-            // if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
-            // std::cout << "client connected." << std::endl;
-            //
-            // server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
-            // server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
-            // server.send_data(reinterpret_cast<const char *>(&format.format), 2);
-            // server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
-
-            audio.capture([&server, &running](auto data, auto len) {
-                server.send_data(data, len);
-                return running;
-            });
-            // std::cout << "client lost." << std::endl;
-        }
-    });
+    // std::thread capture_thread([&server, &audio, &running, &format]() {
+    //     while (running) {
+    //         if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
+    //         std::cout << "client connected." << std::endl;
+    //
+    //         server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
+    //         server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
+    //         server.send_data(reinterpret_cast<const char *>(&format.format), 2);
+    //         server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
+    //
+    //         audio.capture([&server, &running](auto data, auto len) {
+    //             server.send_data(data, len);
+    //             return running;
+    //         });
+    //         std::cout << "client lost." << std::endl;
+    //     }
+    // });
     while (running) {
         std::string cmd;
         std::cin >> cmd;
         if (cmd.starts_with("quit")) break;
     }
     running = false;
-    capture_thread.join();
+    // capture_thread.join();
 }
 
 void test_crypto() {
@@ -96,10 +96,4 @@ int main() {
     // output_test(10);
     start_stream();
     // test_crypto();
-    std::vector<uint8_t> rand_data(4);
-    RAND_bytes(rand_data.data(), static_cast<int>(rand_data.size()));
-    std::cout << "uint: " << *reinterpret_cast<uint32_t *>(rand_data.data()) << std::endl;
-    const auto str = string::uint32_to_string(*reinterpret_cast<uint32_t *>(rand_data.data()), 36);
-    std::cout << str << std::endl;
-    std::cout << std::strtoul(str.c_str(), nullptr, 36) << std::endl;
 }
