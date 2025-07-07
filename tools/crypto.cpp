@@ -12,7 +12,7 @@
 #include <openssl/core_names.h>
 #include "../exceptions.h"
 
-constexpr std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
+const std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
 
 void handleErrors() {
     const auto error = BIO_new(BIO_s_mem());

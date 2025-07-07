@@ -102,9 +102,9 @@ void AudioServer::receive_data() {
 }
 
 void AudioServer::send_data(const char *data, const int size) const {
-    for (auto client: clients) {
+    for (const client_info& client: clients) {
         try {
-            sendto(server_socket, data, size, 0, reinterpret_cast<sockaddr *>(&client), sizeof(client));
+            sendto(server_socket, data, size, 0, (sockaddr*) &client.address, sizeof(client.address));
         } catch (const SocketException &e) {
             Logger::e(AUDIO_SERVER_LOGTAG, "send data failed", e);
         }

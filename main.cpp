@@ -3,10 +3,13 @@
 #include <ctime>
 #include <fstream>
 #include <thread>
+#include <openssl/rand.h>
+
 #include "platform/audio_server.h"
 #include "platform/audio.h"
 #include "tools/base64.h"
 #include "tools/crypto.h"
+#include "tools/string.h"
 
 
 void WriteWaveHeader(std::ofstream &ofstream, const audio_info pwfx, uint32_t dataSize) {
@@ -91,6 +94,12 @@ void test_crypto() {
 
 int main() {
     // output_test(10);
-    // start_stream();
+    start_stream();
     // test_crypto();
+    std::vector<uint8_t> rand_data(4);
+    RAND_bytes(rand_data.data(), static_cast<int>(rand_data.size()));
+    std::cout << "uint: " << *reinterpret_cast<uint32_t *>(rand_data.data()) << std::endl;
+    const auto str = string::uint32_to_string(*reinterpret_cast<uint32_t *>(rand_data.data()), 36);
+    std::cout << str << std::endl;
+    std::cout << std::strtoul(str.c_str(), nullptr, 36) << std::endl;
 }

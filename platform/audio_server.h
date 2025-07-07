@@ -37,8 +37,13 @@ constexpr uint8_t PACK_TYPE_PAIR_RESPONSE =             0b00010011;
 
 
 constexpr uint8_t PACK_TYPE_AUDIO_START =   0b00100000;
-constexpr uint8_t PACK_TYPE_AUDIO_STOP =    0b00100001;
-constexpr uint8_t PACK_TYPE_AUDIO_DATA =    0b00100010;
+constexpr uint8_t PACK_TYPE_AUDIO_INFO =    0b00100001;
+constexpr uint8_t PACK_TYPE_AUDIO_STOP =    0b00100010;
+constexpr uint8_t PACK_TYPE_AUDIO_DATA =    0b00100100;
+
+
+constexpr uint8_t PACK_TYPE_ENCRYPTED_DATA =    0b01000000;//加密数据
+constexpr uint8_t PACK_TYPE_SIGN_DATA =    0b01000001;//加密数据，带签名
 
 typedef struct key_info {
     std::string method;
@@ -49,9 +54,10 @@ typedef struct key_info {
 typedef struct client_info {
     sockaddr_in address{};
     std::chrono::system_clock::time_point active_time;
-    std::unique_ptr<X25519> ecdh_pub_key = nullptr;
+    std::unique_ptr<X25519> ecdh_pub_key;
     std::vector<uint8_t> session_key;
-    key_info* key;
+    key_info* key = nullptr;
+    bool play = false;
 } client_info;
 
 class AudioServer final {
@@ -68,13 +74,15 @@ class AudioServer final {
     bool running = false;
     std::thread server_thread;
     void receive_data();
-    void handle_message(const sockaddr_in& addr, const char* data, int length);
+    void handle_message(const sockaddr_in& addr, const char* data, int length, client_info *client = nullptr, const bool& is_encrypted = false, const bool& is_signed = false);
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
     void start();
 
     void send_data(const char* data, int size) const;
+
+    void authenticate(const std::string& code);
 
     ~AudioServer();
 };
