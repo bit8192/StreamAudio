@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <future>
 
 #include "../../exceptions.h"
 #include "../../logger.h"
@@ -19,7 +20,8 @@ const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
 const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
 const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
 
-AudioServer::AudioServer(const int port, const struct audio_info &audio_info): ecdh_key_pair(X25519::generate()),
+AudioServer::AudioServer(const int port, const struct audio_info &audio_info): port(port),
+                                                                               ecdh_key_pair(X25519::generate()),
                                                                                sign_key_pair(ED25519::empty()),
                                                                                audio_info(audio_info) {
     if (!std::filesystem::exists(CONFIG_PATH)) {
@@ -58,16 +60,18 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): e
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
-    server_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    server_socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_IP);
     if (server_socket == INVALID_SOCKET) {
         const auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
         throw SocketException(error.c_str());
     }
+    char no = 0;
+    setsockopt(server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &no, sizeof(no));
 
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_addr.sin_port = htons(port);
+    sockaddr_in6 server_addr{};
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_addr = in6addr_any;
+    server_addr.sin6_port = htons(port);
 
     if (bind(server_socket, reinterpret_cast<sockaddr *>(&server_addr), sizeof(server_addr)) == SOCKET_ERROR) {
         throw SocketException("bind failed");
@@ -85,28 +89,19 @@ void AudioServer::start() {
 
 void AudioServer::receive_data() {
     char buffer[PACKAGE_SIZE];
-    sockaddr_in client_addr{};
+    sockaddr_storage client_addr{};
     int addr_len = sizeof(client_addr);
     while (running) {
-        const int len = recvfrom(server_socket, buffer, PACKAGE_SIZE, 0, reinterpret_cast<sockaddr *>(&client_addr), &addr_len);
+        const int len = recvfrom(server_socket, buffer, PACKAGE_SIZE, 0, reinterpret_cast<sockaddr *>(&client_addr),
+                                 &addr_len);
         if (len == SOCKET_ERROR) {
-            Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + len);
+            Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + std::to_string(len));
             continue;
         }
         try {
             handle_message(client_addr, buffer, len);
         } catch (const std::exception &e) {
             Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
-        }
-    }
-}
-
-void AudioServer::send_data(const char *data, const int size) const {
-    for (const client_info& client: clients) {
-        try {
-            sendto(server_socket, data, size, 0, (sockaddr*) &client.address, sizeof(client.address));
-        } catch (const SocketException &e) {
-            Logger::e(AUDIO_SERVER_LOGTAG, "send data failed", e);
         }
     }
 }

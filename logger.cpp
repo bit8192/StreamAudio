@@ -26,7 +26,7 @@ void Logger::log(const log_level level, const std::string &tag, const std::strin
         case trace: level_str = "TRACE";
             break;
     }
-    std::cout << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << " [" << tag << "] [" << level_str << "]" << message << std::endl;
+    std::cout << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << " [" << tag << "] [" << level_str << "] " << message << std::endl;
 }
 
 void Logger::t(const std::string &tag, const std::string &message) {

@@ -52,7 +52,7 @@ typedef struct key_info {
 } key_info;
 
 typedef struct client_info {
-    sockaddr_in address{};
+    sockaddr_storage address;
     std::chrono::system_clock::time_point active_time;
     std::unique_ptr<X25519> ecdh_pub_key;
     std::vector<uint8_t> session_key;
@@ -61,6 +61,7 @@ typedef struct client_info {
 } client_info;
 
 class AudioServer final {
+    int port;
     X25519 ecdh_key_pair;
     ED25519 sign_key_pair;
     std::unique_ptr<ED25519> wait_pair_pub_key;
@@ -74,13 +75,17 @@ class AudioServer final {
     bool running = false;
     std::thread server_thread;
     void receive_data();
-    void handle_message(const sockaddr_in& addr, const char* data, int length, client_info *client = nullptr, const bool& is_encrypted = false, const bool& is_signed = false);
+    void handle_message(const sockaddr_storage& addr, const char* data, int length, client_info *client = nullptr, const bool& is_encrypted = false, const bool& is_signed = false);
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
     void start();
 
-    void send_data(const char* data, int size) const;
+    void send_to_all(const std::vector<uint8_t>& data) const;
+
+    void send_to_client(const client_info* client, const std::vector<uint8_t>& data) const;
+
+    int send_to(const sockaddr_storage& addr, const std::vector<uint8_t>& data) const;
 
     void authenticate(const std::string& code);
 

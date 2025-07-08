@@ -4,12 +4,35 @@
 #include "audio_server.h"
 #include "../logger.h"
 #include "openssl/rand.h"
+#include "../exceptions.h"
 
-bool operator==(const sockaddr_in &lhs, const sockaddr_in &rhs) {
-    if (lhs.sin_family != rhs.sin_family) return false;
-    if (lhs.sin_port != rhs.sin_port) return false;
-    if (lhs.sin_addr.s_addr != rhs.sin_addr.s_addr) return false;
-    return true;
+constexpr char LOG_TAG[] = "audio_server_common";
+
+bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
+        // 首先比较地址族
+    if (lhs.ss_family != rhs.ss_family) {
+        return false;
+    }
+
+    // 根据地址族类型进行具体比较
+    switch (lhs.ss_family) {
+        case AF_INET: {
+            auto a4 = (sockaddr_in*)&lhs;
+            auto b4 = (sockaddr_in*)&rhs;
+            return a4->sin_port == b4->sin_port &&
+                   memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
+        }
+        case AF_INET6: {
+            auto a6 = (sockaddr_in6*)&lhs;
+            auto b6 = (sockaddr_in6*)&rhs;
+            return a6->sin6_port == b6->sin6_port &&
+                   memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
+                   a6->sin6_flowinfo == b6->sin6_flowinfo &&
+                   a6->sin6_scope_id == b6->sin6_scope_id;
+        }
+        default:
+            return false; // 未知地址族
+    }
 }
 
 std::vector<uint8_t> decrypt(const std::vector<uint8_t> &data, const std::vector<uint8_t> &key) {
@@ -43,7 +66,28 @@ std::vector<uint8_t> encrypt(const std::vector<uint8_t> &data, const std::vector
     return cipher_data;
 }
 
-void AudioServer::handle_message(const sockaddr_in &addr, const char *data, const int length, client_info *client,
+void AudioServer::send_to_all(const std::vector<uint8_t> &data) const {
+    for (const client_info &client: clients) {
+        try {
+            sendto(server_socket, reinterpret_cast<const char *>(data.data()), data.size(), 0,
+                   (sockaddr *) &client.address, sizeof(client.address));
+        } catch (const SocketException &e) {
+            Logger::e(LOG_TAG, "send data failed", e);
+        }
+    }
+}
+
+void AudioServer::send_to_client(const client_info *client, const std::vector<uint8_t> &data) const {
+    if (client == nullptr) return;
+    send_to(client->address, data);
+}
+
+int AudioServer::send_to(const sockaddr_storage &addr, const std::vector<uint8_t> &data) const {
+    return sendto(server_socket, reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size()), 0, (sockaddr *) &addr, sizeof(addr));
+}
+
+
+void AudioServer::handle_message(const sockaddr_storage &addr, const char *data, const int length, client_info *client,
                                  const bool &is_encrypted, const bool &is_signed) {
     if (length < 1) return;
     char hex[length * 2 + 1];
@@ -52,7 +96,18 @@ void AudioServer::handle_message(const sockaddr_in &addr, const char *data, cons
         sprintf(&hex[i * 2], "%02x", data[i]);
     }
 
-    Logger::d("AudioServer.handler_message", "receive message: addr=" + std::string(inet_ntoa(addr.sin_addr)) + "\tport=" + std::to_string(addr.sin_port) + "\tdata=" + std::string(hex));
+    if (addr.ss_family == AF_INET) {
+        Logger::d("AudioServer.handler_message",
+                  "receive message: addr=" + std::string(inet_ntoa(((sockaddr_in*)&addr)->sin_addr)) + "\tport=" +
+                  std::to_string(ntohs(((sockaddr_in*)&addr)->sin_port)) + "\tdata=" + std::string(hex));
+    } else if (addr.ss_family == AF_INET6) {
+        const auto addr6 = (sockaddr_in6*) &addr;
+        char ip[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &addr6->sin6_addr, ip, INET6_ADDRSTRLEN);
+        Logger::d("AudioServer.handler_message",
+                  "receive message: addr=" + std::string(ip) + "\tport=" +
+                  std::to_string(ntohs(addr6->sin6_port)) + "\tdata=" + std::string(hex));
+    }
     if (client == nullptr)
         for (client_info &c: clients) {
             if (c.address == addr) {
@@ -66,7 +121,7 @@ void AudioServer::handle_message(const sockaddr_in &addr, const char *data, cons
         case PACK_TYPE_PING: {
             //ping
             constexpr char res[1] = {PACK_TYPE_PONG};
-            sendto(server_socket, res, 1, 0, (sockaddr *) &addr, sizeof(sockaddr_in));
+            send_to(addr, std::vector<uint8_t>(res, res + 1));
             return;
         }
         case PACK_TYPE_PONG: //pong
@@ -86,7 +141,8 @@ void AudioServer::handle_message(const sockaddr_in &addr, const char *data, cons
             res[0] = PACK_TYPE_ECDH_RESPONSE;
             memcpy(res + 1, salt.data(), salt.size());
             memcpy(res + 1 + 16, key.data(), key.size());
-            sendto(server_socket, res, static_cast<int>(1 + 16 + key.size()) + 1, 0, (sockaddr *) &addr, sizeof(sockaddr_in));
+            sendto(server_socket, res, static_cast<int>(1 + 16 + key.size()) + 1, 0, (sockaddr *) &addr,
+                   sizeof(sockaddr_in));
             return;
         }
         // case PACK_TYPE_ECDH_RESPONSE: //ignore
@@ -114,7 +170,7 @@ void AudioServer::handle_message(const sockaddr_in &addr, const char *data, cons
             std::vector<uint8_t> audio_info_pack(sizeof(audio_info) + 1);
             audio_info_pack[0] = PACK_TYPE_AUDIO_INFO;
             memcpy(&audio_info_pack[1], &audio_info, sizeof(audio_info));
-            const auto encrypted_data = encrypt(audio_info_pack,client->session_key);
+            const auto encrypted_data = encrypt(audio_info_pack, client->session_key);
             char res[1 + encrypted_data.size() + 64];
             res[0] = PACK_TYPE_AUDIO_INFO;
             memcpy(res + 1, encrypted_data.data(), encrypted_data.size());
