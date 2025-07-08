@@ -17,18 +17,18 @@ constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
 const std::string HOME_DIR = std::getenv("USERPROFILE");
 const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
 const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
-const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\sign-key.pem";
+const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
 
 AudioServer::AudioServer(const int port, const struct audio_info &audio_info): ecdh_key_pair(X25519::generate()),
                                                                                sign_key_pair(ED25519::empty()),
                                                                                audio_info(audio_info) {
     if (!std::filesystem::exists(CONFIG_PATH)) {
-        if (std::filesystem::create_directory(CONFIG_PATH)) {
-            throw AudioException("Failed to create config directory");
+        if (!std::filesystem::create_directory(CONFIG_PATH)) {
+            throw AudioException("failed to create config directory. dir=" + CONFIG_PATH);
         }
     }
     if (std::filesystem::exists(SIGN_KEY_FILE)) {
-        sign_key_pair = ED25519::load_public_key_from_file(SIGN_KEY_FILE);
+        sign_key_pair = ED25519::load_private_key_from_file(SIGN_KEY_FILE);
     } else {
         sign_key_pair = ED25519::generate();
         sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
@@ -58,7 +58,7 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): e
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
-    server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_UDP);
+    server_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (server_socket == INVALID_SOCKET) {
         const auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
         throw SocketException(error.c_str());

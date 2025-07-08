@@ -6,28 +6,26 @@
 #define STREAMSOUND_EXCEPTIONS_H
 
 #include <exception>
+#include <string>
 
-class AudioException: public std::exception {
-private:
-    const char* msg;
+class AudioException final : public std::exception {
+    const std::string msg;
 public:
-    explicit AudioException(const char* msg);
+    explicit AudioException(std::string  msg);
     [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
 };
 
-class SocketException: public std::exception {
-private:
-    const char* msg;
+class SocketException final : public std::exception {
+    const std::string msg;
 public:
-    explicit SocketException(const char* msg);
+    explicit SocketException(std::string  msg);
     [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
 };
 
-class CryptoException: public std::exception {
-private:
-    const char* msg;
+class CryptoException final : public std::exception {
+    const std::string msg;
 public:
-    explicit CryptoException(const char* msg);
+    explicit CryptoException(std::string  msg);
     [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
 };
 

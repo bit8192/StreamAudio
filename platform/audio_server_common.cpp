@@ -46,6 +46,13 @@ std::vector<uint8_t> encrypt(const std::vector<uint8_t> &data, const std::vector
 void AudioServer::handle_message(const sockaddr_in &addr, const char *data, const int length, client_info *client,
                                  const bool &is_encrypted, const bool &is_signed) {
     if (length < 1) return;
+    char hex[length * 2 + 1];
+    hex[length * 2] = 0;
+    for (int i = 0; i < length; ++i) {
+        sprintf(&hex[i * 2], "%02x", data[i]);
+    }
+
+    Logger::d("AudioServer.handler_message", "receive message: addr=" + std::string(inet_ntoa(addr.sin_addr)) + "\tport=" + std::to_string(addr.sin_port) + "\tdata=" + std::string(hex));
     if (client == nullptr)
         for (client_info &c: clients) {
             if (c.address == addr) {

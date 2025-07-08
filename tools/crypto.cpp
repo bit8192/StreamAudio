@@ -15,12 +15,29 @@
 const std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
 
 void handleErrors() {
-    const auto error = BIO_new(BIO_s_mem());
+    BIO *error = BIO_new(BIO_s_mem());
+    if (!error) {
+        throw CryptoException("Failed to create BIO for error reporting");
+    }
+
     ERR_print_errors(error);
-    long len = BIO_get_mem_data(error, nullptr);
-    char msg[len + 1];
-    BIO_get_mem_data(error, msg);
-    throw CryptoException(msg);
+
+    char *msg = nullptr;
+    const long len = BIO_get_mem_data(error, &msg);
+    if (len <= 0 || !msg) {
+        BIO_free(error);
+        throw CryptoException("Failed to get error message");
+    }
+
+    try {
+        // 确保字符串正确终止
+        const std::string errorMsg(msg, len);
+        BIO_free(error);
+        throw CryptoException(errorMsg);
+    } catch (...) {
+        BIO_free(error);
+        throw;
+    }
 }
 
 EVP_PKEY * generate_ecc_keypair(const int id) {

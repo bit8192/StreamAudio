@@ -4,24 +4,26 @@
 
 #include "exceptions.h"
 
-AudioException::AudioException(const char *msg): msg(msg) {
+#include <utility>
+
+AudioException::AudioException(std::string  msg): msg(std::move(msg)) {
 }
 
 const char *AudioException::what() const
 _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW{
-        return msg;
+        return msg.c_str();
 }
 
-SocketException::SocketException(const char *msg): msg(msg) {
+SocketException::SocketException(std::string  msg): msg(std::move(msg)) {
 }
 
 const char *SocketException::what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW {
-    return msg;
+    return msg.c_str();
 }
 
-CryptoException::CryptoException(const char *msg): msg(msg) {
+CryptoException::CryptoException(std::string  msg): msg(std::move(msg)) {
 }
 
 const char * CryptoException::what() const noexcept {
-    return msg;
+    return msg.c_str();
 }
