@@ -26,7 +26,9 @@ add_executable(StreamSound main.cpp
         tools/base64.cpp
         tools/base64.h
         tools/string.cpp
-        tools/string.h)
+        tools/string.h
+        platform/windows/platform_utils.cpp
+        platform/platform_utils.h)
 
 find_package(OpenSSL REQUIRED)
 list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)

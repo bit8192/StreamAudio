@@ -9,7 +9,7 @@
 constexpr char LOG_TAG[] = "audio_server_common";
 
 bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
-        // 首先比较地址族
+    // 首先比较地址族
     if (lhs.ss_family != rhs.ss_family) {
         return false;
     }
@@ -17,14 +17,14 @@ bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
     // 根据地址族类型进行具体比较
     switch (lhs.ss_family) {
         case AF_INET: {
-            auto a4 = (sockaddr_in*)&lhs;
-            auto b4 = (sockaddr_in*)&rhs;
+            auto a4 = (sockaddr_in *) &lhs;
+            auto b4 = (sockaddr_in *) &rhs;
             return a4->sin_port == b4->sin_port &&
                    memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
         }
         case AF_INET6: {
-            auto a6 = (sockaddr_in6*)&lhs;
-            auto b6 = (sockaddr_in6*)&rhs;
+            auto a6 = (sockaddr_in6 *) &lhs;
+            auto b6 = (sockaddr_in6 *) &rhs;
             return a6->sin6_port == b6->sin6_port &&
                    memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
                    a6->sin6_flowinfo == b6->sin6_flowinfo &&
@@ -83,25 +83,25 @@ void AudioServer::send_to_client(const client_info *client, const std::vector<ui
 }
 
 int AudioServer::send_to(const sockaddr_storage &addr, const std::vector<uint8_t> &data) const {
-    return sendto(server_socket, reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size()), 0, (sockaddr *) &addr, sizeof(addr));
+    return sendto(server_socket, reinterpret_cast<const char *>(data.data()), static_cast<int>(data.size()), 0,
+                  (sockaddr *) &addr, sizeof(addr));
 }
 
 
-void AudioServer::handle_message(const sockaddr_storage &addr, const char *data, const int length, client_info *client,
-                                 const bool &is_encrypted, const bool &is_signed) {
-    if (length < 1) return;
-    char hex[length * 2 + 1];
-    hex[length * 2] = 0;
-    for (int i = 0; i < length; ++i) {
+void AudioServer::handle_message(const sockaddr_storage &addr, const std::vector<uint8_t> &data, client_info *client) {
+    if (data.empty()) return;
+    char hex[data.size() * 2 + 1];
+    hex[data.size() * 2] = 0;
+    for (int i = 0; i < data.size(); ++i) {
         sprintf(&hex[i * 2], "%02x", data[i]);
     }
 
     if (addr.ss_family == AF_INET) {
         Logger::d("AudioServer.handler_message",
-                  "receive message: addr=" + std::string(inet_ntoa(((sockaddr_in*)&addr)->sin_addr)) + "\tport=" +
-                  std::to_string(ntohs(((sockaddr_in*)&addr)->sin_port)) + "\tdata=" + std::string(hex));
+                  "receive message: addr=" + std::string(inet_ntoa(((sockaddr_in *) &addr)->sin_addr)) + "\tport=" +
+                  std::to_string(ntohs(((sockaddr_in *) &addr)->sin_port)) + "\tdata=" + std::string(hex));
     } else if (addr.ss_family == AF_INET6) {
-        const auto addr6 = (sockaddr_in6*) &addr;
+        const auto addr6 = (sockaddr_in6 *) &addr;
         char ip[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &addr6->sin6_addr, ip, INET6_ADDRSTRLEN);
         Logger::d("AudioServer.handler_message",
@@ -117,7 +117,11 @@ void AudioServer::handle_message(const sockaddr_storage &addr, const char *data,
             }
         }
     std::vector<uint8_t> decrypted_data;
-    switch (data[0]) {
+    uint8_t *p_pack = const_cast<uint8_t *>(data.data());
+    uint8_t *p_pack_end = p_pack + data.size();
+    auto length = data.size();
+check_pack_type:
+    switch (*p_pack) {
         case PACK_TYPE_PING: {
             //ping
             constexpr char res[1] = {PACK_TYPE_PONG};
@@ -131,37 +135,46 @@ void AudioServer::handle_message(const sockaddr_storage &addr, const char *data,
                 Logger::e("AudioServer.handle_message", "repeat ecdh. client name=" + client->key->name);
                 return;
             }
-            client->ecdh_pub_key = std::make_unique<X25519>(
-                X25519::load_public_key_from_mem(std::vector<uint8_t>(data + 1, data + length)));
+            const auto key_length = *reinterpret_cast<short *>(++p_pack);
+            p_pack += sizeof(short);
+            if (key_length < 1) {
+                Logger::e("AudioServer.handle_message", "invalid ecdh key length: " + std::to_string(key_length));
+                return;
+            }
+            if (p_pack_end - p_pack < key_length) {
+                Logger::e("AudioServer.handle_message", "pack length is insufficient: need=" + std::to_string(key_length));
+                return;
+            }
+            client->ecdh_pub_key = std::make_unique<X25519>(X25519::load_public_key_from_mem(std::vector(p_pack, p_pack + key_length)));
             const auto key = ecdh_key_pair.export_public_key();
-            char res[1 + 16 + key.size()] = {};
+            const int send_pack_len = 1 + 16 + 2 + key.size();
+            char res[send_pack_len] = {};
+            char* res_p = res;
             auto salt = std::vector<uint8_t>(16);
             RAND_bytes(salt.data(), static_cast<int>(salt.size()));
             client->session_key = ecdh_key_pair.derive_shared_secret(*client->ecdh_pub_key, salt);
-            res[0] = PACK_TYPE_ECDH_RESPONSE;
-            memcpy(res + 1, salt.data(), salt.size());
-            memcpy(res + 1 + 16, key.data(), key.size());
-            sendto(server_socket, res, static_cast<int>(1 + 16 + key.size()) + 1, 0, (sockaddr *) &addr,
-                   sizeof(sockaddr_in));
+            *res_p = PACK_TYPE_ECDH_RESPONSE;                                   res_p += sizeof(PACK_TYPE_ECDH_RESPONSE);
+            memcpy(res_p, salt.data(), salt.size());                        res_p += salt.size();
+            *reinterpret_cast<short *>(res_p) = static_cast<short>(key.size()); res_p += sizeof(short);
+            memcpy(res_p, key.data(), key.size());
+            sendto(server_socket, res, send_pack_len, 0, (sockaddr *) &addr,sizeof(sockaddr_in));
             return;
         }
         // case PACK_TYPE_ECDH_RESPONSE: //ignore
         //     return;
-        case PACK_TYPE_PAIR_REQUEST:
-            if (!is_encrypted) {
-                Logger::e("AudioServer.handle_message", "pair request not be encrypt");
-                return;
-            }
-            wait_pair_pub_key = std::make_unique<ED25519>(ED25519::load_public_key_from_mem(
-                std::vector<uint8_t>(data + 5, data + length)));
+        case PACK_TYPE_PAIR_REQUEST: {
+            //TODO 通信流程：先交换ed25519公钥，第一次交换公钥时，客户端使用随机数+公钥计算hmac保证数据不被篡改，随机数不进行传输通过提示框提示用户在服务端输入，校验成功后再进行x25519协商共享密钥
+            wait_pair_pub_key = std::make_unique<ED25519>(
+                ED25519::load_public_key_from_mem(std::vector(p_pack + 5, p_pack + length)));
             wait_pair_code = *decrypted_data.data();
             pair_client = client;
             pair_timestamp = std::chrono::high_resolution_clock::now();
+        }
         //等待用户输入代码后再发送响应
         // case PACK_TYPE_PAIR_RESPONSE: //ignore
         case PACK_TYPE_AUDIO_START: //audio start
         {
-            if (client == nullptr || is_signed) {
+            if (client == nullptr) {
                 Logger::e("AudioServer.handle_message", "unauthorized client control.");
                 return;
             }
@@ -193,7 +206,7 @@ void AudioServer::handle_message(const sockaddr_storage &addr, const char *data,
                 Logger::e("AudioServer.handle_message", "invalid sign data: no session key. ");
                 return;
             }
-            decrypted_data = decrypt(std::vector<uint8_t>(data + 1, data + length), client->session_key);
+            decrypted_data = decrypt(std::vector<uint8_t>(p_pack + 1, p_pack + length), client->session_key);
             handle_message(addr, reinterpret_cast<const char *>(decrypted_data.data()),
                            static_cast<int>(decrypted_data.size()), client, true, is_signed);
             break;
@@ -202,16 +215,16 @@ void AudioServer::handle_message(const sockaddr_storage &addr, const char *data,
                 Logger::e("AudioServer.handle_message", "invalid sign data: no sign public key");
                 return;
             }
-            if (!client->key->key.verify(std::vector<uint8_t>(data, data + length - 64),
-                                         std::vector<uint8_t>(data + length - 64, data + length))) {
+            if (!client->key->key.verify(std::vector<uint8_t>(p_pack, p_pack + length - 64),
+                                         std::vector<uint8_t>(p_pack + length - 64, p_pack + length))) {
                 Logger::e("AudioServer.handle_message",
                           "invalid pair request: sign verify failed. client name=" + client->key->name);
                 return;
             }
-            handle_message(addr, data + 1, length - 65, client, false, true);
+            handle_message(addr, p_pack + 1, length - 65, client, false, true);
             break;
         default:
-            Logger::e("AudioServer.handle_message", "unsupported pack type: " + std::to_string(data[0]));
+            Logger::e("AudioServer.handle_message", "unsupported pack type: " + std::to_string(p_pack[0]));
             break;
     }
 }

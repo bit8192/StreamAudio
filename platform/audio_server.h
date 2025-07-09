@@ -43,7 +43,6 @@ constexpr uint8_t PACK_TYPE_AUDIO_DATA =    0b00100100;
 
 
 constexpr uint8_t PACK_TYPE_ENCRYPTED_DATA =    0b01000000;//加密数据
-constexpr uint8_t PACK_TYPE_SIGN_DATA =    0b01000001;//加密数据，带签名
 
 typedef struct key_info {
     std::string method;
@@ -75,7 +74,7 @@ class AudioServer final {
     bool running = false;
     std::thread server_thread;
     void receive_data();
-    void handle_message(const sockaddr_storage& addr, const char* data, int length, client_info *client = nullptr, const bool& is_encrypted = false, const bool& is_signed = false);
+    void handle_message(const sockaddr_storage& addr, const std::vector<uint8_t>& data, client_info *client = nullptr);
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
