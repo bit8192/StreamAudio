@@ -87,6 +87,20 @@ int AudioServer::send_to(const sockaddr_storage &addr, const std::vector<uint8_t
                   (sockaddr *) &addr, sizeof(addr));
 }
 
+std::vector<uint8_t> read_key_value(uint8_t** pp_data, const uint8_t* p_data_end) {
+    uint8_t *p_data = *pp_data;
+    if (p_data == nullptr) throw SocketException("data pointer is null");
+    const auto key_length = *reinterpret_cast<uint16_t *>(p_data);
+    p_data += sizeof(uint16_t);
+    if (key_length < 1) {
+        throw SocketException("invalid ecdh key length: " + std::to_string(key_length));
+    }
+    if (p_data_end - p_data < key_length) {
+        throw SocketException("pack length is insufficient: need=" + std::to_string(key_length));
+    }
+    *pp_data = p_data + key_length;
+    return {p_data, p_data + key_length};
+}
 
 void AudioServer::handle_message(const sockaddr_storage &addr, const std::vector<uint8_t> &data, client_info *client) {
     if (data.empty()) return;
@@ -135,17 +149,8 @@ check_pack_type:
                 Logger::e("AudioServer.handle_message", "repeat ecdh. client name=" + client->key->name);
                 return;
             }
-            const auto key_length = *reinterpret_cast<short *>(++p_pack);
-            p_pack += sizeof(short);
-            if (key_length < 1) {
-                Logger::e("AudioServer.handle_message", "invalid ecdh key length: " + std::to_string(key_length));
-                return;
-            }
-            if (p_pack_end - p_pack < key_length) {
-                Logger::e("AudioServer.handle_message", "pack length is insufficient: need=" + std::to_string(key_length));
-                return;
-            }
-            client->ecdh_pub_key = std::make_unique<X25519>(X25519::load_public_key_from_mem(std::vector(p_pack, p_pack + key_length)));
+            p_pack++;
+            client->ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(&p_pack, p_pack_end)));
             const auto key = ecdh_key_pair.export_public_key();
             const int send_pack_len = 1 + 16 + 2 + key.size();
             char res[send_pack_len] = {};
@@ -163,10 +168,13 @@ check_pack_type:
         // case PACK_TYPE_ECDH_RESPONSE: //ignore
         //     return;
         case PACK_TYPE_PAIR_REQUEST: {
-            //TODO 通信流程：先交换ed25519公钥，第一次交换公钥时，客户端使用随机数+公钥计算hmac保证数据不被篡改，随机数不进行传输通过提示框提示用户在服务端输入，校验成功后再进行x25519协商共享密钥
-            wait_pair_pub_key = std::make_unique<ED25519>(
-                ED25519::load_public_key_from_mem(std::vector(p_pack + 5, p_pack + length)));
-            wait_pair_code = *decrypted_data.data();
+            p_pack++;
+            wait_pair_pub_key = read_key_value(&p_pack, p_pack_end);
+            if (p_pack_end - p_pack < 32) {
+                Logger::e("AudioServer.handler_message", "invalid pair request: hmac too short. len=" + std::to_string(p_pack_end - p_pack));
+                return;
+            }
+            wait_pair_hmac = {p_pack, p_pack + 32};
             pair_client = client;
             pair_timestamp = std::chrono::high_resolution_clock::now();
         }
@@ -193,7 +201,7 @@ check_pack_type:
             break;
         }
         case PACK_TYPE_AUDIO_STOP: //audio stop
-            if (client == nullptr || is_signed) {
+            if (client == nullptr) {
                 Logger::e("AudioServer.handle_message", "unauthorized client control.");
                 return;
             }
@@ -207,28 +215,40 @@ check_pack_type:
                 return;
             }
             decrypted_data = decrypt(std::vector<uint8_t>(p_pack + 1, p_pack + length), client->session_key);
-            handle_message(addr, reinterpret_cast<const char *>(decrypted_data.data()),
-                           static_cast<int>(decrypted_data.size()), client, true, is_signed);
+            // handle_message(addr, reinterpret_cast<const char *>(decrypted_data.data()),
+            //                static_cast<int>(decrypted_data.size()), client, true);
             break;
-        case PACK_TYPE_SIGN_DATA:
-            if (client == nullptr || client->key == nullptr) {
-                Logger::e("AudioServer.handle_message", "invalid sign data: no sign public key");
-                return;
-            }
-            if (!client->key->key.verify(std::vector<uint8_t>(p_pack, p_pack + length - 64),
-                                         std::vector<uint8_t>(p_pack + length - 64, p_pack + length))) {
-                Logger::e("AudioServer.handle_message",
-                          "invalid pair request: sign verify failed. client name=" + client->key->name);
-                return;
-            }
-            handle_message(addr, p_pack + 1, length - 65, client, false, true);
-            break;
+        // case PACK_TYPE_SIGN_DATA:
+        //     if (client == nullptr || client->key == nullptr) {
+        //         Logger::e("AudioServer.handle_message", "invalid sign data: no sign public key");
+        //         return;
+        //     }
+        //     if (!client->key->key.verify(std::vector<uint8_t>(p_pack, p_pack + length - 64),
+        //                                  std::vector<uint8_t>(p_pack + length - 64, p_pack + length))) {
+        //         Logger::e("AudioServer.handle_message",
+        //                   "invalid pair request: sign verify failed. client name=" + client->key->name);
+        //         return;
+        //     }
+        //     handle_message(addr, p_pack + 1, length - 65, client, false, true);
+        //     break;
         default:
             Logger::e("AudioServer.handle_message", "unsupported pack type: " + std::to_string(p_pack[0]));
             break;
     }
 }
 
-void AudioServer::authenticate(const std::string &code) {
-    // std::stoul(code, nullptr, 0);
+void AudioServer::pair(const std::string &code) {
+    if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::high_resolution_clock::now() - pair_timestamp).count() > 60) {
+        pair_client = nullptr;
+        pair_timestamp = std::chrono::high_resolution_clock::time_point();
+        wait_pair_hmac = {};
+        wait_pair_pub_key = {};
+        return;
+    }
+    const auto key = Crypto::sha256(std::vector<uint8_t>(code.data(), code.data() + code.size()));
+    if (const auto hmac = Crypto::hmac_sha256(key, wait_pair_pub_key); hmac != wait_pair_hmac) {
+        Logger::e("AudioServer.handle_message", "pair failed: code error.");
+        return;
+    }
+    //TODO 构建响应包：公钥 + hmac
 }

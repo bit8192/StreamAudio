@@ -110,28 +110,28 @@ std::vector<uint8_t> hmac_derive_key(
     return derived_key;
 }
 
-KeyPair::KeyPair(EVP_PKEY *key, const bool is_public): key(key), is_public(is_public) {
+Crypto::KeyPair::KeyPair(EVP_PKEY *key, const bool is_public): key(key), is_public(is_public) {
 }
 
-ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
+Crypto::ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
 }
 
-X25519::X25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
+Crypto::X25519::X25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
 }
 
-ED25519 ED25519::empty() {
+Crypto::ED25519 Crypto::ED25519::empty() {
     return {nullptr, false};
 }
 
-ED25519 ED25519::generate() {
+Crypto::ED25519 Crypto::ED25519::generate() {
     return {generate_ecc_keypair(NID_ED25519), false};
 }
 
-X25519 X25519::generate() {
+Crypto::X25519 Crypto::X25519::generate() {
     return {generate_ecc_keypair(NID_X25519), false};
 }
 
-ED25519 ED25519::load_public_key_from_file(const std::string &filename) {
+Crypto::ED25519 Crypto::ED25519::load_public_key_from_file(const std::string &filename) {
     const auto file = fopen(filename.c_str(), "rb");
     if(!file) throw CryptoException("open file failed.");
     const auto pkey = PEM_read_PUBKEY(file, nullptr, nullptr, nullptr);
@@ -140,7 +140,7 @@ ED25519 ED25519::load_public_key_from_file(const std::string &filename) {
     return {pkey, true};
 }
 
-ED25519 ED25519::load_private_key_from_file(const std::string &filename) {
+Crypto::ED25519 Crypto::ED25519::load_private_key_from_file(const std::string &filename) {
     const auto file = fopen(filename.c_str(), "rb");
     if(!file) throw CryptoException("open file failed.");
     const auto pkey = PEM_read_PrivateKey(file, nullptr, nullptr, nullptr);
@@ -149,19 +149,19 @@ ED25519 ED25519::load_private_key_from_file(const std::string &filename) {
     return {pkey, false};
 }
 
-ED25519 ED25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
+Crypto::ED25519 Crypto::ED25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
     const auto pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_ED25519, nullptr, data.data(), data.size());
     if(!pkey) handleErrors();
     return {pkey, true};
 }
 
-X25519 X25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
+Crypto::X25519 Crypto::X25519::load_public_key_from_mem(const std::vector<uint8_t> &data) {
     const auto pkey = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr, data.data(), data.size());
     if(!pkey) handleErrors();
     return {pkey, true};
 }
 
-std::vector<uint8_t> KeyPair::export_public_key() const {
+std::vector<uint8_t> Crypto::KeyPair::export_public_key() const {
     if (!is_public) throw CryptoException("this is not a public key");
     size_t len = 32;
     std::vector<uint8_t> pubkey(len, 0);
@@ -169,7 +169,7 @@ std::vector<uint8_t> KeyPair::export_public_key() const {
     return pubkey;
 }
 
-std::vector<uint8_t> KeyPair::export_private_key() const {
+std::vector<uint8_t> Crypto::KeyPair::export_private_key() const {
     if (is_public) throw CryptoException("this is not a private key");
     size_t len = 32;
     std::vector<uint8_t> prev_key(len, 0);
@@ -177,7 +177,7 @@ std::vector<uint8_t> KeyPair::export_private_key() const {
     return prev_key;
 }
 
-void KeyPair::write_public_key_to_file(const std::string &filename) const {
+void Crypto::KeyPair::write_public_key_to_file(const std::string &filename) const {
     FILE* fp = fopen(filename.c_str(), "wb");
     if (!fp) throw CryptoException("Failed to open file");
 
@@ -189,14 +189,14 @@ void KeyPair::write_public_key_to_file(const std::string &filename) const {
     fclose(fp);
 }
 
-void KeyPair::write_private_key_to_file(const std::string &filename) const {
+void Crypto::KeyPair::write_private_key_to_file(const std::string &filename) const {
     const auto bio = BIO_new_file(filename.c_str(), "wb");
     if (!bio) throw CryptoException("Failed to open file");
     PEM_write_bio_PrivateKey(bio, key, nullptr, nullptr, 0, nullptr, nullptr);
     BIO_free(bio);
 }
 
-std::vector<uint8_t> ED25519::sign(const std::vector<uint8_t> &data) const {
+std::vector<uint8_t> Crypto::ED25519::sign(const std::vector<uint8_t> &data) const {
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (!mdctx) handleErrors();
 
@@ -221,7 +221,7 @@ std::vector<uint8_t> ED25519::sign(const std::vector<uint8_t> &data) const {
     return signature;
 }
 
-bool ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) const {
+bool Crypto::ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) const {
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (!mdctx) handleErrors();
 
@@ -239,7 +239,7 @@ bool ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t
     return false;
 }
 
-std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key, const std::vector<uint8_t>& salt) const {
+std::vector<uint8_t> Crypto::X25519::derive_shared_secret(const X25519 &pub_key, const std::vector<uint8_t>& salt) const {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(key, nullptr);
     if (!ctx) handleErrors();
 
@@ -256,4 +256,96 @@ std::vector<uint8_t> X25519::derive_shared_secret(const X25519 &pub_key, const s
     EVP_PKEY_CTX_free(ctx);
 
     return hmac_derive_key(shared_secret, salt, derive_key_info);
+}
+
+// 计算 HMAC-SHA256
+std::vector<uint8_t> Crypto::hmac_sha256(
+    const std::vector<uint8_t>& key,
+    const std::vector<uint8_t>& data
+) {
+    std::vector<unsigned char> hmac(EVP_MAX_MD_SIZE);
+    size_t hmac_len = 0;
+
+    // 使用 EVP 接口计算 HMAC
+    EVP_MAC* mac = EVP_MAC_fetch(nullptr, "HMAC", nullptr);
+    if (!mac) {
+        throw CryptoException("EVP_MAC_fetch failed");
+    }
+
+    EVP_MAC_CTX* ctx = EVP_MAC_CTX_new(mac);
+    if (!ctx) {
+        EVP_MAC_free(mac);
+        throw CryptoException("EVP_MAC_CTX_new failed");
+    }
+
+    // 设置 HMAC 的哈希算法（如 SHA-256）
+    OSSL_PARAM params[2];
+    params[0] = OSSL_PARAM_construct_utf8_string("digest", static_cast<char *>("SHA256"), 0);
+    params[1] = OSSL_PARAM_construct_end();
+
+    if (EVP_MAC_init(ctx, key.data(), key.size(), params) != 1) {
+        EVP_MAC_CTX_free(ctx);
+        EVP_MAC_free(mac);
+        throw CryptoException("EVP_MAC_init failed");
+    }
+
+    if (EVP_MAC_update(ctx, data.data(), data.size()) != 1) {
+        throw CryptoException("EVP_MAC_update failed\n");
+        EVP_MAC_CTX_free(ctx);
+        EVP_MAC_free(mac);
+        return {};
+    }
+
+    if (EVP_MAC_final(ctx, hmac.data(), &hmac_len, hmac.size()) != 1) {
+        throw CryptoException("EVP_MAC_final failed\n");
+        EVP_MAC_CTX_free(ctx);
+        EVP_MAC_free(mac);
+        return {};
+    }
+
+    hmac.resize(hmac_len); // 调整大小以匹配实际 HMAC 长度
+
+    // 清理资源
+    EVP_MAC_CTX_free(ctx);
+    EVP_MAC_free(mac);
+
+    return hmac;
+}
+
+// 计算 SHA-256 哈希
+std::vector<uint8_t> Crypto::sha256(const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> hash(EVP_MAX_MD_SIZE);
+    unsigned int hash_len = 0;
+
+    // 1. 获取 SHA-256 的 EVP_MD 结构
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) {
+        throw CryptoException("EVP_MD_CTX_new failed");
+    }
+
+    // 2. 初始化哈希计算（指定 SHA-256）
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1) {
+        EVP_MD_CTX_free(ctx);
+        throw CryptoException("EVP_DigestInit_ex failed");
+    }
+
+    // 3. 输入数据
+    if (EVP_DigestUpdate(ctx, data.data(), data.size()) != 1) {
+        EVP_MD_CTX_free(ctx);
+        throw CryptoException("EVP_DigestUpdate failed");
+    }
+
+    // 4. 获取哈希结果
+    if (EVP_DigestFinal_ex(ctx, hash.data(), &hash_len) != 1) {
+        EVP_MD_CTX_free(ctx);
+        throw CryptoException("EVP_DigestFinal_ex failed");
+    }
+
+    // 5. 调整输出大小（SHA-256 固定 32 字节）
+    hash.resize(hash_len);
+
+    // 6. 释放资源
+    EVP_MD_CTX_free(ctx);
+
+    return hash;
 }

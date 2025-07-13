@@ -24,6 +24,8 @@
 #include "audio.h"
 #include "../tools/crypto.h"
 
+constexpr uint16_t AUDIO_SERVER_VERSION = 0x01;
+
 constexpr int PACKAGE_SIZE = 1200;
 
 constexpr uint8_t PACK_TYPE_PING = 0x00;
@@ -46,25 +48,38 @@ constexpr uint8_t PACK_TYPE_ENCRYPTED_DATA =    0b01000000;//加密数据
 
 typedef struct key_info {
     std::string method;
-    ED25519 key;
+    Crypto::ED25519 key;
     std::string name;
 } key_info;
 
 typedef struct client_info {
     sockaddr_storage address;
     std::chrono::system_clock::time_point active_time;
-    std::unique_ptr<X25519> ecdh_pub_key;
+    std::unique_ptr<Crypto::X25519> ecdh_pub_key;
     std::vector<uint8_t> session_key;
     key_info* key = nullptr;
     bool play = false;
 } client_info;
 
+template <typename T>
+class DataPack {
+    uint16_t length;
+    uint16_t version = AUDIO_SERVER_VERSION;
+    uint8_t pack_type;
+    T data;
+public:
+    explicit DataPack(uint8_t pack_type, T& data);
+    explicit DataPack(const std::vector<uint8_t>& data);
+
+    [[nodiscard]] const byte& get_pack_type() const;
+};
+
 class AudioServer final {
     int port;
-    X25519 ecdh_key_pair;
-    ED25519 sign_key_pair;
-    std::unique_ptr<ED25519> wait_pair_pub_key;
-    uint32_t wait_pair_code;
+    Crypto::X25519 ecdh_key_pair;
+    Crypto::ED25519 sign_key_pair;
+    std::vector<uint8_t> wait_pair_pub_key;
+    std::vector<uint8_t> wait_pair_hmac;
     std::chrono::system_clock::time_point pair_timestamp;
     client_info* pair_client;
     std::vector<key_info> client_keys;
@@ -86,7 +101,7 @@ public:
 
     int send_to(const sockaddr_storage& addr, const std::vector<uint8_t>& data) const;
 
-    void authenticate(const std::string& code);
+    void pair(const std::string& code);
 
     ~AudioServer();
 };
