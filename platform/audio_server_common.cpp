@@ -5,6 +5,7 @@
 #include "../logger.h"
 #include "openssl/rand.h"
 #include "../exceptions.h"
+#include "../tools/data_pointer.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
 

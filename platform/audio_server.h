@@ -23,6 +23,7 @@
 
 #include "audio.h"
 #include "../tools/crypto.h"
+#include "../tools/data_pointer.h"
 
 constexpr uint16_t AUDIO_SERVER_VERSION = 0x01;
 
@@ -68,10 +69,24 @@ class DataPack {
     uint8_t pack_type;
     T data;
 public:
-    explicit DataPack(uint8_t pack_type, T& data);
-    explicit DataPack(const std::vector<uint8_t>& data);
+    explicit DataPack(const std::vector<uint8_t> &data) {
+        auto data_pointer = DataPointer(data);
+        length = data_pointer.get_uint();
+        version = data_pointer.get_uint16();
+        pack_type = data_pointer.get();
+        data_pointer.copy_to(reinterpret_cast<uint8_t *>(&this->data), sizeof(T));
+    }
+    explicit DataPack(const uint8_t* data, const size_t& length) {
+        auto data_pointer = DataPointer(data, length);
+        this->length = data_pointer.get_uint();
+        version = data_pointer.get_uint16();
+        pack_type = data_pointer.get();
+        data_pointer.copy_to(reinterpret_cast<uint8_t *>(&this->data), sizeof(T));
+    }
 
-    [[nodiscard]] const byte& get_pack_type() const;
+    [[nodiscard]] const uint8_t& get_pack_type() const {
+        return pack_type;
+    }
 };
 
 class AudioServer final {
@@ -99,7 +114,7 @@ public:
 
     void send_to_client(const client_info* client, const std::vector<uint8_t>& data) const;
 
-    int send_to(const sockaddr_storage& addr, const std::vector<uint8_t>& data) const;
+    [[nodiscard]] int send_to(const sockaddr_storage& addr, const std::vector<uint8_t>& data) const;
 
     void pair(const std::string& code);
 
