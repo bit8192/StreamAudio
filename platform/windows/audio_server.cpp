@@ -21,8 +21,8 @@ const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
 const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
 
 AudioServer::AudioServer(const int port, const struct audio_info &audio_info): port(port),
-                                                                               ecdh_key_pair(X25519::generate()),
-                                                                               sign_key_pair(ED25519::empty()),
+                                                                               ecdh_key_pair(Crypto::X25519::generate()),
+                                                                               sign_key_pair(Crypto::ED25519::empty()),
                                                                                audio_info(audio_info) {
     if (!std::filesystem::exists(CONFIG_PATH)) {
         if (!std::filesystem::create_directory(CONFIG_PATH)) {
@@ -30,9 +30,9 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
         }
     }
     if (std::filesystem::exists(SIGN_KEY_FILE)) {
-        sign_key_pair = ED25519::load_private_key_from_file(SIGN_KEY_FILE);
+        sign_key_pair = Crypto::ED25519::load_private_key_from_file(SIGN_KEY_FILE);
     } else {
-        sign_key_pair = ED25519::generate();
+        sign_key_pair = Crypto::ED25519::generate();
         sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
     }
     if (std::filesystem::exists(AUTHENTICATED_FILE)) {
@@ -48,7 +48,7 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
             if (fields[0] == "ed25519") {
                 client_keys.emplace_back(
                     fields[0],
-                    ED25519::load_public_key_from_mem(Base64::decode(fields[1])),
+                    Crypto::ED25519::load_public_key_from_mem(Base64::decode(fields[1])),
                     fields[2]
                 );
             } else {

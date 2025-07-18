@@ -221,7 +221,7 @@ std::vector<uint8_t> Crypto::ED25519::sign(const std::vector<uint8_t> &data) con
     return signature;
 }
 
-bool Crypto::ED25519::verify(const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) const {
+bool Crypto::ED25519::verify(const uint8_t* ptr, const size_t size, const std::vector<uint8_t> &signature) const {
     EVP_MD_CTX* mdctx = EVP_MD_CTX_new();
     if (!mdctx) handleErrors();
 
@@ -230,7 +230,7 @@ bool Crypto::ED25519::verify(const std::vector<uint8_t> &data, const std::vector
         handleErrors();
     }
 
-    const int ret = EVP_DigestVerify(mdctx, signature.data(), signature.size(), data.data(), data.size());
+    const int ret = EVP_DigestVerify(mdctx, signature.data(), signature.size(), ptr, size);
     EVP_MD_CTX_free(mdctx);
 
     if (ret == 1) return true;

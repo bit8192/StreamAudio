@@ -38,12 +38,12 @@ struct WAVEFILEHEADER {
 };
 #pragma pack(pop)
 
-typedef struct audio_info {
+struct audio_info {
     uint32_t sample_rate;
     uint16_t bits;
     uint16_t format;
     uint16_t channels;
-} audio_info;
+};
 
 class Audio {
 private:

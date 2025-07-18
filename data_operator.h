@@ -2,9 +2,10 @@
 // Created by bincker on 2025/7/15.
 //
 
-#ifndef DATA_POINTER_H
-#define DATA_POINTER_H
+#ifndef DATA_OPERATOR_H
+#define DATA_OPERATOR_H
 #include <cstdint>
+#include <string>
 #include <vector>
 
 enum ByteOrder {
@@ -12,11 +13,11 @@ enum ByteOrder {
     BIG_ENDIAN,
 };
 
-class DataPointer {
+class DataOperator {
 public:
-    DataPointer(const uint8_t* raw_pointer, const size_t& size);
-    DataPointer(const uint8_t* start, const uint8_t* end);
-    explicit DataPointer(const std::vector<uint8_t>& data);
+    DataOperator(const uint8_t* raw_pointer, const size_t& size);
+    DataOperator(const uint8_t* start, const uint8_t* end);
+    explicit DataOperator(const std::vector<uint8_t>& data);
 
     uint8_t get();
 
@@ -54,11 +55,23 @@ public:
 
     void set_order(ByteOrder order);
 
+    [[nodiscard]] std::string to_hex() const;
+
+    void mark();
+
+    void reset();
+
+    void clear();
+
+    void flip();
+
 private:
     const uint8_t *raw_pointer;
     const uint8_t *raw_pointer_end;
     const size_t size;
     uint8_t *pointer;
+    uint8_t *limit_pointer;
+    uint8_t *mark_pointer = nullptr;
     ByteOrder order = BIG_ENDIAN;
     void checkBounds(const size_t& requested) const;
     void copy_with_order(uint8_t* dest, const size_t& size);
@@ -66,4 +79,4 @@ private:
 };
 
 
-#endif //DATA_POINTER_H
+#endif //DATA_OPERATOR_H

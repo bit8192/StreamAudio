@@ -44,7 +44,7 @@ namespace Crypto {
 
         [[nodiscard]] std::vector<uint8_t> sign(const std::vector<uint8_t> &data) const;
 
-        [[nodiscard]] bool verify(const std::vector<uint8_t> &data, const std::vector<uint8_t> &signature) const;
+        [[nodiscard]] bool verify(const uint8_t* ptr, const size_t size, const std::vector<uint8_t> &signature) const;
     };
 
     class X25519 : public KeyPair {

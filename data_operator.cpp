@@ -2,51 +2,54 @@
 // Created by bincker on 2025/7/15.
 //
 
-#include "data_pointer.h"
+#include "data_operator.h"
 #include <vector>
 #include <cstdint>
 #include <stdexcept>
 #include <algorithm>
 #include <cstring>
 
-DataPointer::DataPointer(const uint8_t *raw_pointer, const size_t &size)
+DataOperator::DataOperator(const uint8_t *raw_pointer, const size_t &size)
     : raw_pointer(raw_pointer),
       raw_pointer_end(raw_pointer + size),
       size(size),
-      pointer(const_cast<uint8_t *>(raw_pointer)) {
+      pointer(const_cast<uint8_t *>(raw_pointer)),
+      limit_pointer(pointer + size) {
 }
 
-DataPointer::DataPointer(const uint8_t *start, const uint8_t *end)
+DataOperator::DataOperator(const uint8_t *start, const uint8_t *end)
     : raw_pointer(start),
       raw_pointer_end(end),
       size(end - start),
-      pointer(const_cast<uint8_t *>(start)) {
+      pointer(const_cast<uint8_t *>(start)),
+      limit_pointer(pointer + size) {
 }
 
-DataPointer::DataPointer(const std::vector<uint8_t> &data)
+DataOperator::DataOperator(const std::vector<uint8_t> &data)
     : raw_pointer(data.data()),
       raw_pointer_end(data.data() + data.size()),
       size(data.size()),
-      pointer(const_cast<uint8_t *>(data.data())) {
+      pointer(const_cast<uint8_t *>(data.data())),
+      limit_pointer(pointer + size) {
 }
 
-uint8_t DataPointer::get() {
+uint8_t DataOperator::get() {
     checkBounds(1);
     return *pointer++;
 }
 
-void DataPointer::put(const uint8_t &value) {
+void DataOperator::put(const uint8_t &value) {
     checkBounds(1);
     *pointer++ = value;
 }
 
-uint16_t DataPointer::get_uint16() {
+uint16_t DataOperator::get_uint16() {
     uint16_t value;
     copy_with_order(reinterpret_cast<uint8_t *>(&value), 4);
     return value;
 }
 
-void DataPointer::put_uint16(const uint16_t &value) {
+void DataOperator::put_uint16(const uint16_t &value) {
     checkBounds(4);
     *pointer++ = static_cast<uint8_t>((value >> 24) & 0xFF);
     *pointer++ = static_cast<uint8_t>((value >> 16) & 0xFF);
@@ -54,13 +57,13 @@ void DataPointer::put_uint16(const uint16_t &value) {
     *pointer++ = static_cast<uint8_t>(value & 0xFF);
 }
 
-int DataPointer::get_int() {
+int DataOperator::get_int() {
     int value;
     copy_to(reinterpret_cast<uint8_t *>(&value), 4);
     return value;
 }
 
-uint32_t DataPointer::get_uint() {
+uint32_t DataOperator::get_uint() {
     checkBounds(4);
     uint32_t value = 0;
     value |= static_cast<uint32_t>(*pointer++) << 24;
@@ -70,34 +73,34 @@ uint32_t DataPointer::get_uint() {
     return value;
 }
 
-void DataPointer::put_int(const int &i) {
+void DataOperator::put_int(const int &i) {
     put_array_with_order(reinterpret_cast<const uint8_t *>(&i), 4);
 }
 
-void DataPointer::put_uint(const uint32_t &i) {
+void DataOperator::put_uint(const uint32_t &i) {
     put_array_with_order(reinterpret_cast<const uint8_t *>(&i), 4);
 }
 
-std::vector<uint8_t> DataPointer::get_array(const size_t &size) {
+std::vector<uint8_t> DataOperator::get_array(const size_t &size) {
     checkBounds(size);
     std::vector result(pointer, pointer + size);
     pointer += size;
     return result;
 }
 
-void DataPointer::copy_to(uint8_t *dest, const size_t &size) {
+void DataOperator::copy_to(uint8_t *dest, const size_t &size) {
     checkBounds(size);
     std::copy_n(pointer, size, dest);
     pointer += size;
 }
 
-void DataPointer::reverse_copy_to(uint8_t* dest, const size_t& size) {
+void DataOperator::reverse_copy_to(uint8_t* dest, const size_t& size) {
     checkBounds(size);
     std::reverse_copy(pointer, pointer + size, dest);
     pointer += size;
 }
 
-void DataPointer::copy_with_order(uint8_t *dest, const size_t &size) {
+void DataOperator::copy_with_order(uint8_t *dest, const size_t &size) {
     if (order == BIG_ENDIAN) {
         reverse_copy_to(dest, size);
     }else {
@@ -105,41 +108,41 @@ void DataPointer::copy_with_order(uint8_t *dest, const size_t &size) {
     }
 }
 
-void DataPointer::put_array(const std::vector<uint8_t> &value) {
+void DataOperator::put_array(const std::vector<uint8_t> &value) {
     put_array(value.data(), static_cast<uint32_t>(value.size()));
 }
 
-void DataPointer::put_array(const uint8_t *start, const size_t &size) {
+void DataOperator::put_array(const uint8_t *start, const size_t &size) {
     checkBounds(size);
     std::copy_n(start, size, pointer);
     pointer += size;
 }
 
-void DataPointer::put_array_reverse(const std::vector<uint8_t> &value) {
+void DataOperator::put_array_reverse(const std::vector<uint8_t> &value) {
     put_array_reverse(value.data(), static_cast<uint32_t>(value.size()));
 }
 
-void DataPointer::put_array_reverse(const uint8_t *start, const size_t &size) {
+void DataOperator::put_array_reverse(const uint8_t *start, const size_t &size) {
     checkBounds(size);
     std::reverse_copy(pointer, pointer + size, start);
     pointer += size;
 }
 
-size_t DataPointer::remaining() const {
-    return raw_pointer_end - pointer;
+size_t DataOperator::remaining() const {
+    return limit_pointer - pointer;
 }
 
-size_t DataPointer::position() const {
+size_t DataOperator::position() const {
     return pointer - raw_pointer;
 }
 
-void DataPointer::checkBounds(const size_t &requested) const {
-    if (pointer + requested > raw_pointer_end) {
+void DataOperator::checkBounds(const size_t &requested) const {
+    if (pointer + requested > limit_pointer) {
         throw std::out_of_range("Attempt to read/write beyond buffer bounds");
     }
 }
 
-void DataPointer::put_array_with_order(const uint8_t *dest, const size_t &size) {
+void DataOperator::put_array_with_order(const uint8_t *dest, const size_t &size) {
     if (order == BIG_ENDIAN) {
         put_array_reverse(dest, size);
     }else {
@@ -147,6 +150,35 @@ void DataPointer::put_array_with_order(const uint8_t *dest, const size_t &size) 
     }
 }
 
-void DataPointer::set_order(const ByteOrder order) {
+void DataOperator::set_order(const ByteOrder order) {
     this->order = order;
+}
+
+std::string DataOperator::to_hex() const {
+    char hex[size * 2 + 1];
+    hex[size * 2] = 0;
+    for (int i = 0; i < size; ++i) {
+        sprintf(&hex[i * 2], "%02x", raw_pointer[i]);
+    }
+    return hex;
+}
+
+void DataOperator::mark() {
+    mark_pointer = pointer;
+}
+
+void DataOperator::reset() {
+    if (mark_pointer == nullptr) return;
+    pointer = mark_pointer;
+}
+
+void DataOperator::clear() {
+    pointer = const_cast<uint8_t *>(raw_pointer);
+    mark_pointer = nullptr;
+    limit_pointer = const_cast<uint8_t *>(raw_pointer_end);
+}
+
+void DataOperator::flip() {
+    limit_pointer = pointer;
+    pointer = const_cast<uint8_t *>(raw_pointer);
 }

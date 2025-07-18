@@ -23,7 +23,7 @@
 
 #include "audio.h"
 #include "../tools/crypto.h"
-#include "../tools/data_pointer.h"
+#include "../data_operator.h"
 
 constexpr uint16_t AUDIO_SERVER_VERSION = 0x01;
 
@@ -37,6 +37,7 @@ constexpr uint8_t PACK_TYPE_ECDH_REQUEST =              0b00010000;
 constexpr uint8_t PACK_TYPE_ECDH_RESPONSE =             0b00010001;
 constexpr uint8_t PACK_TYPE_PAIR_REQUEST =              0b00010010;
 constexpr uint8_t PACK_TYPE_PAIR_RESPONSE =             0b00010011;
+constexpr uint8_t PACK_TYPE_PAIR_COMPLETED =            0b00010100;
 
 
 constexpr uint8_t PACK_TYPE_AUDIO_START =   0b00100000;
@@ -47,45 +48,29 @@ constexpr uint8_t PACK_TYPE_AUDIO_DATA =    0b00100100;
 
 constexpr uint8_t PACK_TYPE_ENCRYPTED_DATA =    0b01000000;//加密数据
 
-typedef struct key_info {
+struct key_info {
     std::string method;
     Crypto::ED25519 key;
     std::string name;
-} key_info;
+};
 
-typedef struct client_info {
+struct client_info {
     sockaddr_storage address;
     std::chrono::system_clock::time_point active_time;
     std::unique_ptr<Crypto::X25519> ecdh_pub_key;
     std::vector<uint8_t> session_key;
     key_info* key = nullptr;
     bool play = false;
-} client_info;
+};
 
-template <typename T>
-class DataPack {
-    uint16_t length;
-    uint16_t version = AUDIO_SERVER_VERSION;
-    uint8_t pack_type;
-    T data;
-public:
-    explicit DataPack(const std::vector<uint8_t> &data) {
-        auto data_pointer = DataPointer(data);
-        length = data_pointer.get_uint();
-        version = data_pointer.get_uint16();
-        pack_type = data_pointer.get();
-        data_pointer.copy_to(reinterpret_cast<uint8_t *>(&this->data), sizeof(T));
-    }
-    explicit DataPack(const uint8_t* data, const size_t& length) {
-        auto data_pointer = DataPointer(data, length);
-        this->length = data_pointer.get_uint();
-        version = data_pointer.get_uint16();
-        pack_type = data_pointer.get();
-        data_pointer.copy_to(reinterpret_cast<uint8_t *>(&this->data), sizeof(T));
-    }
+struct data_pack {
+    std::unique_ptr<uint8_t[]> data;
+    DataOperator data_operator;
 
-    [[nodiscard]] const uint8_t& get_pack_type() const {
-        return pack_type;
+    explicit data_pack(const uint16_t version = AUDIO_SERVER_VERSION, const uint8_t pack_type, const size_t size): data(std::make_unique<uint8_t[]>(size)), data_operator(data.get(), size) {
+        data_operator.put_uint16(size + 5);
+        data_operator.put_uint16(version);
+        data_operator.put(pack_type);
     }
 };
 
@@ -104,19 +89,23 @@ class AudioServer final {
     bool running = false;
     std::thread server_thread;
     void receive_data();
-    void handle_message(const sockaddr_storage& addr, const std::vector<uint8_t>& data, client_info *client = nullptr);
+    void handle_message(const sockaddr_storage& addr, const uint8_t* ptr, const size_t size, client_info *client = nullptr);
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
     void start();
 
-    void send_to_all(const std::vector<uint8_t>& data) const;
+    void send_to_all(const data_pack& pack) const;
 
-    void send_to_client(const client_info* client, const std::vector<uint8_t>& data) const;
+    void send_to_client(const client_info* client, const data_pack& pack) const;
 
-    [[nodiscard]] int send_to(const sockaddr_storage& addr, const std::vector<uint8_t>& data) const;
+    void send_to(const sockaddr_storage& addr, const data_pack& pack) const;
 
-    void pair(const std::string& code);
+    bool pair(const std::string& code);
+
+    void clear_pair();
+
+    bool has_pair();
 
     ~AudioServer();
 };
