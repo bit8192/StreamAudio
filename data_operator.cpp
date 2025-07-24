@@ -45,31 +45,25 @@ void DataOperator::put(const uint8_t &value) {
 
 uint16_t DataOperator::get_uint16() {
     uint16_t value;
-    copy_with_order(reinterpret_cast<uint8_t *>(&value), 4);
+    copy_with_order(reinterpret_cast<uint8_t *>(&value), 2);
     return value;
 }
 
 void DataOperator::put_uint16(const uint16_t &value) {
-    checkBounds(4);
-    *pointer++ = static_cast<uint8_t>((value >> 24) & 0xFF);
-    *pointer++ = static_cast<uint8_t>((value >> 16) & 0xFF);
-    *pointer++ = static_cast<uint8_t>((value >> 8) & 0xFF);
-    *pointer++ = static_cast<uint8_t>(value & 0xFF);
+    checkBounds(2);
+    put_array_with_order(reinterpret_cast<const uint8_t *>(value), 2);
 }
 
 int DataOperator::get_int() {
     int value;
-    copy_to(reinterpret_cast<uint8_t *>(&value), 4);
+    copy_with_order(reinterpret_cast<uint8_t *>(&value), 4);
     return value;
 }
 
 uint32_t DataOperator::get_uint() {
     checkBounds(4);
     uint32_t value = 0;
-    value |= static_cast<uint32_t>(*pointer++) << 24;
-    value |= static_cast<uint32_t>(*pointer++) << 16;
-    value |= static_cast<uint32_t>(*pointer++) << 8;
-    value |= static_cast<uint32_t>(*pointer++);
+    copy_with_order(reinterpret_cast<uint8_t *>(&value), 4);
     return value;
 }
 
@@ -124,7 +118,7 @@ void DataOperator::put_array_reverse(const std::vector<uint8_t> &value) {
 
 void DataOperator::put_array_reverse(const uint8_t *start, const size_t &size) {
     checkBounds(size);
-    std::reverse_copy(pointer, pointer + size, start);
+    std::reverse_copy(start, start + size, pointer);
     pointer += size;
 }
 

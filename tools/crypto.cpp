@@ -6,12 +6,14 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
 #include <openssl/core_names.h>
 #include "../exceptions.h"
 
+constexpr char CRYPTO_NAME_SHA256[] = "SHA256";
 const std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
 
 void handleErrors() {
@@ -70,7 +72,7 @@ std::vector<uint8_t> hmac_derive_key(
 
     // 配置 HMAC 参数（算法为 SHA-256）
     OSSL_PARAM params[2];
-    params[0] = OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST, "SHA256", 0);
+    params[0] = OSSL_PARAM_construct_utf8_string(OSSL_MAC_PARAM_DIGEST, const_cast<char *>(CRYPTO_NAME_SHA256), 0);
     params[1] = OSSL_PARAM_construct_end();
 
     // 创建 EVP_MAC_CTX
@@ -110,13 +112,13 @@ std::vector<uint8_t> hmac_derive_key(
     return derived_key;
 }
 
-Crypto::KeyPair::KeyPair(EVP_PKEY *key, const bool is_public): key(key), is_public(is_public) {
+Crypto::KeyPair::KeyPair(std::string name, EVP_PKEY *key, const bool is_public): key(key), is_public(is_public), name(std::move(name)) {
 }
 
-Crypto::ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
+Crypto::ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair("ed25519", key,is_public) {
 }
 
-Crypto::X25519::X25519(EVP_PKEY *key, const bool is_public): KeyPair(key,is_public) {
+Crypto::X25519::X25519(EVP_PKEY *key, const bool is_public): KeyPair("x25519", key,is_public) {
 }
 
 Crypto::ED25519 Crypto::ED25519::empty() {
@@ -194,6 +196,10 @@ void Crypto::KeyPair::write_private_key_to_file(const std::string &filename) con
     if (!bio) throw CryptoException("Failed to open file");
     PEM_write_bio_PrivateKey(bio, key, nullptr, nullptr, 0, nullptr, nullptr);
     BIO_free(bio);
+}
+
+std::string Crypto::KeyPair::get_name() const {
+    return name;
 }
 
 std::vector<uint8_t> Crypto::ED25519::sign(const std::vector<uint8_t> &data) const {
@@ -280,7 +286,7 @@ std::vector<uint8_t> Crypto::hmac_sha256(
 
     // 设置 HMAC 的哈希算法（如 SHA-256）
     OSSL_PARAM params[2];
-    params[0] = OSSL_PARAM_construct_utf8_string("digest", static_cast<char *>("SHA256"), 0);
+    params[0] = OSSL_PARAM_construct_utf8_string("digest", const_cast<char *>(CRYPTO_NAME_SHA256), 0);
     params[1] = OSSL_PARAM_construct_end();
 
     if (EVP_MAC_init(ctx, key.data(), key.size(), params) != 1) {

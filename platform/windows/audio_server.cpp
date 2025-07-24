@@ -15,48 +15,12 @@
 #include "../../tools/crypto.h"
 
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
-const std::string HOME_DIR = std::getenv("USERPROFILE");
-const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
-const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
-const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
 
 AudioServer::AudioServer(const int port, const struct audio_info &audio_info): port(port),
                                                                                ecdh_key_pair(Crypto::X25519::generate()),
                                                                                sign_key_pair(Crypto::ED25519::empty()),
                                                                                audio_info(audio_info) {
-    if (!std::filesystem::exists(CONFIG_PATH)) {
-        if (!std::filesystem::create_directory(CONFIG_PATH)) {
-            throw AudioException("failed to create config directory. dir=" + CONFIG_PATH);
-        }
-    }
-    if (std::filesystem::exists(SIGN_KEY_FILE)) {
-        sign_key_pair = Crypto::ED25519::load_private_key_from_file(SIGN_KEY_FILE);
-    } else {
-        sign_key_pair = Crypto::ED25519::generate();
-        sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
-    }
-    if (std::filesystem::exists(AUTHENTICATED_FILE)) {
-        std::ifstream auth_file(AUTHENTICATED_FILE);
-        std::string line;
-        while (std::getline(auth_file, line)) {
-            if (line.empty()) continue;
-            const auto fields = string::split(line, ' ');
-            if (fields.size() != 3) {
-                Logger::w("AudioServer.Constructor", "invalid authenticated line: " + line);
-                continue;
-            }
-            if (fields[0] == "ed25519") {
-                client_keys.emplace_back(
-                    fields[0],
-                    Crypto::ED25519::load_public_key_from_mem(Base64::decode(fields[1])),
-                    fields[2]
-                );
-            } else {
-                Logger::w("AudioServer.Constructor", "unsupported crypto method: " + fields[0]);
-                continue;
-            }
-        }
-    }
+    init_client_key();
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
@@ -99,7 +63,7 @@ void AudioServer::receive_data() {
             continue;
         }
         try {
-            handle_message(client_addr, buffer, len);
+            handle_message(client_addr, reinterpret_cast<const uint8_t *>(buffer), len);
         } catch (const std::exception &e) {
             Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
         }

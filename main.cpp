@@ -87,7 +87,7 @@ void start_stream() {
 }
 
 void test_crypto() {
-    const ED25519 signKeyPair = ED25519::load_private_key_from_file("private_key.pem");
+    const Crypto::ED25519 signKeyPair = Crypto::ED25519::load_private_key_from_file("private_key.pem");
     // signKeyPair.write_private_key_to_file("private_key.pem");
     signKeyPair.write_public_key_to_file("public_key1.pem");
 }

@@ -1,13 +1,22 @@
 //
 // Created by bincker on 2025/6/29.
 //
+#include <filesystem>
+#include <fstream>
+
 #include "audio_server.h"
 #include "../logger.h"
 #include "openssl/rand.h"
 #include "../exceptions.h"
 #include "../data_operator.h"
+#include "../tools/string.h"
+#include "../tools/base64.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
+const std::string HOME_DIR = std::getenv("USERPROFILE");
+const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
+const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
+const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
 
 bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
     // 首先比较地址族
@@ -65,6 +74,76 @@ std::vector<uint8_t> encrypt(const std::vector<uint8_t> &data, const std::vector
     EVP_CIPHER_CTX_free(ctx);
 
     return cipher_data;
+}
+
+void AudioServer::init_client_key() {
+    if (!std::filesystem::exists(CONFIG_PATH)) {
+        if (!std::filesystem::create_directory(CONFIG_PATH)) {
+            throw AudioException("failed to create config directory. dir=" + CONFIG_PATH);
+        }
+    }
+    if (std::filesystem::exists(SIGN_KEY_FILE)) {
+        sign_key_pair = Crypto::ED25519::load_private_key_from_file(SIGN_KEY_FILE);
+    } else {
+        sign_key_pair = Crypto::ED25519::generate();
+        sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
+    }
+    if (std::filesystem::exists(AUTHENTICATED_FILE)) {
+        std::ifstream auth_file(AUTHENTICATED_FILE);
+        std::string line;
+        while (std::getline(auth_file, line)) {
+            if (line.empty()) continue;
+            const auto fields = string::split(line, ' ');
+            if (fields.size() != 3) {
+                Logger::w("AudioServer.Constructor", "invalid authenticated line: " + line);
+                continue;
+            }
+            if (fields[0] == "ed25519") {
+                client_keys[fields[2]] = key_info(
+                    std::make_unique<Crypto::ED25519>(Crypto::ED25519::load_public_key_from_mem(Base64::decode(fields[1]))),
+                    fields[2]
+                );
+            } else {
+                Logger::w("AudioServer.Constructor", "unsupported crypto method: " + fields[0]);
+            }
+        }
+    }
+}
+
+void AudioServer::add_client_key(key_info& key) {
+    if (client_keys.contains(key.name)) {
+        Logger::w("AudioServer.add_client_key", "key already exists");
+        return;
+    }
+    std::ofstream auth_file(AUTHENTICATED_FILE, std::ios::app);
+    auth_file << key.key->get_name() << " " << Base64::encode(key.key->export_public_key()) << " " << key.name << std::endl;
+    client_keys[key.name] = std::move(key);
+}
+
+void AudioServer::delete_client_key(const key_info& key) {
+    if (!client_keys.contains(key.name)) {
+        Logger::w("AudioServer.add_client_key", "key not found: name=" + key.name);
+        return;
+    }
+
+    std::ifstream auth_file(AUTHENTICATED_FILE);
+    std::string line;
+    std::string result_content;
+    while (std::getline(auth_file, line)) {
+        if (line.empty()) continue;
+        const auto fields = string::split(line, ' ');
+        if (fields.size() != 3) {
+            Logger::w("AudioServer.Constructor", "invalid authenticated line: " + line);
+            continue;
+        }
+        if (fields[2] != key.name) {
+            result_content += line + "\n";
+        }
+    }
+    auth_file.close();
+    std::ofstream auth_file_out(AUTHENTICATED_FILE);
+    auth_file_out << result_content;
+    client_keys.erase(key.name);
 }
 
 void AudioServer::send_to_all(const data_pack &pack) const {
@@ -150,7 +229,7 @@ check_pack_type:
     switch (data_operator.get()) {
         case PACK_TYPE_PING: {
             //ping
-            data_pack pack{PACK_TYPE_PONG, 0};
+            const data_pack pack{PACK_TYPE_PONG, 0};
             send_to(client->address, pack);
             return;
         }
@@ -161,9 +240,9 @@ check_pack_type:
                 Logger::e("AudioServer.handle_message", "repeat ecdh. client name=" + client->key->name);
                 return;
             }
-            client->ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(&p_pack, p_pack_end)));
+            client->ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(data_operator)));
             const auto key = ecdh_key_pair.export_public_key();
-            const int send_pack_len = 1 + 16 + 2 + key.size();
+            const size_t send_pack_len = 1 + 16 + 2 + key.size();
             char res[send_pack_len] = {};
             char* res_p = res;
             auto salt = std::vector<uint8_t>(16);
@@ -193,9 +272,11 @@ check_pack_type:
             const auto client_pub_key = Crypto::ED25519::load_public_key_from_mem(wait_pair_pub_key);
             if (!client_pub_key.verify(ptr, data_operator.position(), data_operator.get_array(64))) {
                 Logger::e("AudioServer.handler_message", "pair completed: sign verify failed. client name=" + client->key->name);
+                clear_pair();
                 return;
             }
-            //TODO save pub key
+            key_info key(std::make_unique<Crypto::ED25519>(client_pub_key), wait_pair_client_name);
+            add_client_key(key);
         }
         //等待用户输入代码后再发送响应
         // case PACK_TYPE_PAIR_RESPONSE: //ignore
@@ -233,7 +314,7 @@ check_pack_type:
                 Logger::e("AudioServer.handle_message", "invalid sign data: no session key. ");
                 return;
             }
-            decrypted_data = decrypt(std::vector<uint8_t>(p_pack + 1, p_pack + length), client->session_key);
+            // decrypted_data = decrypt(std::vector<uint8_t>(p_pack + 1, p_pack + length), client->session_key);
             // handle_message(addr, reinterpret_cast<const char *>(decrypted_data.data()),
             //                static_cast<int>(decrypted_data.size()), client, true);
             break;
@@ -251,12 +332,12 @@ check_pack_type:
         //     handle_message(addr, p_pack + 1, length - 65, client, false, true);
         //     break;
         default:
-            Logger::e("AudioServer.handle_message", "unsupported pack type: " + std::to_string(p_pack[0]));
+            Logger::e("AudioServer.handle_message", "unsupported pack type: " + data_operator.to_hex());
             break;
     }
 }
 
-bool AudioServer::pair(const std::string &code) {
+bool AudioServer::pair(const std::string &code, const std::string &name) {
     if (!has_pair()) return false;
     const auto key = Crypto::sha256(std::vector<uint8_t>(code.data(), code.data() + code.size()));
     if (const auto hmac = Crypto::hmac_sha256(key, wait_pair_pub_key); hmac != wait_pair_hmac) {
@@ -265,11 +346,12 @@ bool AudioServer::pair(const std::string &code) {
         return false;
     }
     const auto pub_key = sign_key_pair.export_public_key();
-    data_pack pack{AUDIO_SERVER_VERSION, PACK_TYPE_PAIR_RESPONSE, pub_key.size() + 64};
+    data_pack pack{PACK_TYPE_PAIR_RESPONSE, pub_key.size() + 64};
     pack.data_operator.put_array(pub_key);
     const auto hmac = Crypto::hmac_sha256(key, pub_key);
     pack.data_operator.put_array(hmac);
     send_to_client(pair_client, pack);
+    wait_pair_client_name = name;
     return true;
 }
 

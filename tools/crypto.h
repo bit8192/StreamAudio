@@ -11,14 +11,15 @@
 
 namespace Crypto {
     class KeyPair {
-    public:
-        explicit KeyPair(EVP_PKEY *key, bool is_public);
-
     protected:
         EVP_PKEY *key = nullptr;
         bool is_public = false;
+    private:
+        std::string name;
 
     public:
+        explicit KeyPair(std::string name, EVP_PKEY *key, bool is_public);
+
         [[nodiscard]] std::vector<uint8_t> export_public_key() const;
 
         [[nodiscard]] std::vector<uint8_t> export_private_key() const;
@@ -26,6 +27,8 @@ namespace Crypto {
         void write_public_key_to_file(const std::string &filename) const;
 
         void write_private_key_to_file(const std::string &filename) const;
+
+        [[nodiscard]] std::string get_name() const;
     };
 
     class ED25519 : public KeyPair {

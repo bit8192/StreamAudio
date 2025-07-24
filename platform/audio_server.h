@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #endif
 #include <condition_variable>
+#include <map>
 #include <thread>
 #include <vector>
 
@@ -49,8 +50,7 @@ constexpr uint8_t PACK_TYPE_AUDIO_DATA =    0b00100100;
 constexpr uint8_t PACK_TYPE_ENCRYPTED_DATA =    0b01000000;//加密数据
 
 struct key_info {
-    std::string method;
-    Crypto::ED25519 key;
+    std::unique_ptr<Crypto::ED25519> key;
     std::string name;
 };
 
@@ -67,7 +67,7 @@ struct data_pack {
     std::unique_ptr<uint8_t[]> data;
     DataOperator data_operator;
 
-    explicit data_pack(const uint16_t version = AUDIO_SERVER_VERSION, const uint8_t pack_type, const size_t size): data(std::make_unique<uint8_t[]>(size)), data_operator(data.get(), size) {
+    explicit data_pack(const uint8_t pack_type, const size_t size, const uint16_t version = AUDIO_SERVER_VERSION): data(std::make_unique<uint8_t[]>(size)), data_operator(data.get(), size) {
         data_operator.put_uint16(size + 5);
         data_operator.put_uint16(version);
         data_operator.put(pack_type);
@@ -80,9 +80,10 @@ class AudioServer final {
     Crypto::ED25519 sign_key_pair;
     std::vector<uint8_t> wait_pair_pub_key;
     std::vector<uint8_t> wait_pair_hmac;
+    std::string wait_pair_client_name;
     std::chrono::system_clock::time_point pair_timestamp;
     client_info* pair_client;
-    std::vector<key_info> client_keys;
+    std::map<std::string,key_info> client_keys;
     audio_info audio_info;
     int server_socket;
     std::vector<client_info> clients;
@@ -101,13 +102,19 @@ public:
 
     void send_to(const sockaddr_storage& addr, const data_pack& pack) const;
 
-    bool pair(const std::string& code);
+    bool pair(const std::string& code, const std::string& name);
 
     void clear_pair();
 
     bool has_pair();
 
     ~AudioServer();
+private:
+    void init_client_key();
+
+    void add_client_key(key_info& key);
+
+    void delete_client_key(const key_info& key);
 };
 
 
