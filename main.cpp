@@ -79,8 +79,20 @@ void start_stream() {
     // });
     while (running) {
         std::string cmd;
-        std::cin >> cmd;
+        std::getline(std::cin, cmd);
         if (cmd.starts_with("quit")) break;
+        if (cmd.starts_with("pair")) {
+            const auto param = string::split(cmd, ' ');
+            if (param.size() != 3) {
+                std::printf("invalid param. usage: pair <code> <name>\n");
+                continue;
+            }
+            if (server.pair(param[1], param[2])) {
+                std::printf("pair failed.\n");
+            }else {
+                std::printf("pair success.\n");
+            }
+        }
     }
     running = false;
     // capture_thread.join();

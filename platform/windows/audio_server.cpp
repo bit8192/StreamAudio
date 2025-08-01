@@ -71,5 +71,6 @@ void AudioServer::receive_data() {
 }
 
 AudioServer::~AudioServer() {
+    running = false;
     closesocket(server_socket);
 }
