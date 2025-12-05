@@ -9,8 +9,8 @@
 #include <vector>
 
 enum ByteOrder {
-    LITTLE_ENDIAN,
-    BIG_ENDIAN,
+    ORDER_LITTLE_ENDIAN,
+    ORDER_BIG_ENDIAN,
 };
 
 class DataOperator {
@@ -72,7 +72,7 @@ private:
     uint8_t *pointer;
     uint8_t *limit_pointer;
     uint8_t *mark_pointer = nullptr;
-    ByteOrder order = BIG_ENDIAN;
+    ByteOrder order = ORDER_BIG_ENDIAN;
     void checkBounds(const size_t& requested) const;
     void copy_with_order(uint8_t* dest, const size_t& size);
     void put_array_with_order(const uint8_t* dest, const size_t& size);

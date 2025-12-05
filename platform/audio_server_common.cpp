@@ -1,6 +1,7 @@
 //
 // Created by bincker on 2025/6/29.
 //
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 
@@ -13,10 +14,9 @@
 #include "../tools/base64.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
-const std::string HOME_DIR = std::getenv("USERPROFILE");
-const auto CONFIG_PATH = HOME_DIR + R"(\.config\stream-sound)";
-const auto SIGN_KEY_FILE = CONFIG_PATH + "\\sign-key.pem";
-const auto AUTHENTICATED_FILE = CONFIG_PATH + "\\.authenticated";
+const auto CONFIG_PATH = HOME_DIR + std::filesystem::path::preferred_separator + ".config" + std::filesystem::path::preferred_separator + "stream-sound";
+const auto SIGN_KEY_FILE = CONFIG_PATH + std::filesystem::path::preferred_separator + "sign-key.pem";
+const auto AUTHENTICATED_FILE = CONFIG_PATH + std::filesystem::path::preferred_separator + ".authenticated";
 
 bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
     // 首先比较地址族
@@ -30,13 +30,13 @@ bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
             auto a4 = (sockaddr_in *) &lhs;
             auto b4 = (sockaddr_in *) &rhs;
             return a4->sin_port == b4->sin_port &&
-                   memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
+                   std::memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
         }
         case AF_INET6: {
             auto a6 = (sockaddr_in6 *) &lhs;
             auto b6 = (sockaddr_in6 *) &rhs;
             return a6->sin6_port == b6->sin6_port &&
-                   memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
+                   std::memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
                    a6->sin6_flowinfo == b6->sin6_flowinfo &&
                    a6->sin6_scope_id == b6->sin6_scope_id;
         }
@@ -75,6 +75,16 @@ std::vector<uint8_t> encrypt(const std::vector<uint8_t> &data, const std::vector
 
     return cipher_data;
 }
+
+void AudioServer::start() {
+    if (running) {
+        running = false;
+        if (server_thread.joinable()) server_thread.join();
+    }
+    running = true;
+    server_thread = std::thread(&AudioServer::receive_data, this);
+}
+
 
 void AudioServer::init_client_key() {
     if (!std::filesystem::exists(CONFIG_PATH)) {
@@ -243,7 +253,7 @@ check_pack_type:
             client->ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(data_operator)));
             const auto key = ecdh_key_pair.export_public_key();
             const size_t send_pack_len = 1 + 16 + 2 + key.size();
-            char res[send_pack_len] = {};
+            auto res = new char[send_pack_len];
             char* res_p = res;
             auto salt = std::vector<uint8_t>(16);
             RAND_bytes(salt.data(), static_cast<int>(salt.size()));
@@ -253,6 +263,7 @@ check_pack_type:
             *reinterpret_cast<short *>(res_p) = static_cast<short>(key.size()); res_p += sizeof(short);
             memcpy(res_p, key.data(), key.size());
             sendto(server_socket, res, send_pack_len, 0, (sockaddr *) &addr,sizeof(sockaddr_in));
+            delete[] res;
             return;
         }
         // case PACK_TYPE_ECDH_RESPONSE: //ignore

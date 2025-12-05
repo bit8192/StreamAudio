@@ -95,7 +95,7 @@ void DataOperator::reverse_copy_to(uint8_t* dest, const size_t& size) {
 }
 
 void DataOperator::copy_with_order(uint8_t *dest, const size_t &size) {
-    if (order == BIG_ENDIAN) {
+    if (order == ORDER_BIG_ENDIAN) {
         reverse_copy_to(dest, size);
     }else {
         copy_to(dest, size);
@@ -137,7 +137,7 @@ void DataOperator::checkBounds(const size_t &requested) const {
 }
 
 void DataOperator::put_array_with_order(const uint8_t *dest, const size_t &size) {
-    if (order == BIG_ENDIAN) {
+    if (order == ORDER_BIG_ENDIAN) {
         put_array_reverse(dest, size);
     }else {
         put_array(dest, size);

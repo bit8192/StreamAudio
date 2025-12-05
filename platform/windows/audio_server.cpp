@@ -17,7 +17,6 @@
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
 
 AudioServer::AudioServer(const int port, const struct audio_info &audio_info): port(port),
-                                                                               ecdh_key_pair(Crypto::X25519::generate()),
                                                                                sign_key_pair(Crypto::ED25519::empty()),
                                                                                audio_info(audio_info) {
     init_client_key();
@@ -40,15 +39,6 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
     if (bind(server_socket, reinterpret_cast<sockaddr *>(&server_addr), sizeof(server_addr)) == SOCKET_ERROR) {
         throw SocketException("bind failed");
     }
-}
-
-void AudioServer::start() {
-    if (running) {
-        running = false;
-        if (server_thread.joinable()) server_thread.join();
-    }
-    running = true;
-    server_thread = std::thread(&AudioServer::receive_data, this);
 }
 
 void AudioServer::receive_data() {

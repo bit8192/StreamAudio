@@ -12,10 +12,12 @@
 #include <condition_variable>
 
 #pragma comment(lib, "ws2_32.lib")
+const std::string HOME_DIR = std::getenv("USERPROFILE");
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+const std::string HOME_DIR = std::getenv("HOME");
 #endif
 #include <condition_variable>
 #include <map>
@@ -76,15 +78,15 @@ struct data_pack {
 
 class AudioServer final {
     int port;
-    Crypto::X25519 ecdh_key_pair;
+    Crypto::X25519 ecdh_key_pair = Crypto::X25519::generate();
     Crypto::ED25519 sign_key_pair;
     std::vector<uint8_t> wait_pair_pub_key;
     std::vector<uint8_t> wait_pair_hmac;
     std::string wait_pair_client_name;
     std::chrono::system_clock::time_point pair_timestamp;
-    client_info* pair_client;
+    client_info* pair_client = nullptr;
     std::map<std::string,key_info> client_keys;
-    audio_info audio_info;
+    struct audio_info audio_info;
     int server_socket;
     std::vector<client_info> clients;
     bool running = false;

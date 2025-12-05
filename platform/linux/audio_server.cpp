@@ -2,18 +2,24 @@
 // Created by Bincker on 2025/6/26.
 //
 
+#include "../../logger.h"
 #include "../audio_server.h"
 #include "../../exceptions.h"
 
-AudioServer::AudioServer(const char *ip, int port) {
+constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
+
+AudioServer::AudioServer(const int port, const struct audio_info& audio_info) : port(port),
+                                                                               sign_key_pair(Crypto::ED25519::empty()),
+                                                                               audio_info(audio_info) {
+    init_client_key();
     // 1. 创建socket文件描述符
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    server_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (server_socket < 0) throw SocketException("无法创建socket");
 
     // 2. 配置socket地址结构
     sockaddr_in address{};
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = inet_addr(ip);
+    address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port); // 端口转换为网络字节序
 
     // 3. 绑定socket到地址和端口
@@ -21,54 +27,28 @@ AudioServer::AudioServer(const char *ip, int port) {
         close(server_socket);
         throw SocketException("绑定失败");
     }
-
-    // 4. 开始监听连接
-    if (listen(server_socket, 0) < 0) { // 最多允许3个连接在队列中等待
-        close(server_socket);
-        throw SocketException("监听失败");
-    }
 }
 
-void AudioServer::accept_runner() {
-    while (running){
-        client_socket = accept(server_socket, reinterpret_cast<sockaddr *>(&client_addr), &client_len);
-        while (client_socket > 0){
-            {
-                std::unique_lock lock(mutex_wait_client);
-                cv_wait_client.notify_all();
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds (100));
+void AudioServer::receive_data() {
+    char buffer[PACKAGE_SIZE];
+    sockaddr_storage client_addr{};
+    socklen_t addr_len = sizeof(client_addr);
+    while (running) {
+        const auto len = recvfrom(server_socket, buffer, PACKAGE_SIZE, 0, reinterpret_cast<sockaddr *>(&client_addr),
+                                 &addr_len);
+        if (len == -1) {
+            Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + std::to_string(len));
+            continue;
+        }
+        try {
+            handle_message(client_addr, reinterpret_cast<const uint8_t *>(buffer), len);
+        } catch (const std::exception &e) {
+            Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
         }
     }
 }
 
-bool AudioServer::wait_client(const std::chrono::milliseconds &duration) {
-    if (client_socket > 0) return true;
-    std::unique_lock lock(mutex_wait_client);
-    return cv_wait_client.wait_for(lock, duration) == std::cv_status::no_timeout;
-}
-
-void AudioServer::start() {
-    if (accept_thread.joinable()){
-        running = false;
-        accept_thread.join();
-    }
-    running = true;
-    accept_thread = std::thread(&AudioServer::accept_runner, this);
-}
-
-bool AudioServer::send_data(const char *data, int size) {
-    if (client_socket <= 0) return false;
-    if (send(client_socket, data, size, MSG_NOSIGNAL) <= 0){
-        close(client_socket);
-        client_socket = -1;
-        return false;
-    }
-    return true;
-}
-
 AudioServer::~AudioServer() {
     running = false;
-    if (accept_thread.joinable()) accept_thread.join();
     close(server_socket);
 }
