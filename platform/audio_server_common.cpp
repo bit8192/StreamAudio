@@ -14,9 +14,9 @@
 #include "../tools/base64.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
-const auto CONFIG_PATH = HOME_DIR + std::filesystem::path::preferred_separator + ".config" + std::filesystem::path::preferred_separator + "stream-sound";
-const auto SIGN_KEY_FILE = CONFIG_PATH + std::filesystem::path::preferred_separator + "sign-key.pem";
-const auto AUTHENTICATED_FILE = CONFIG_PATH + std::filesystem::path::preferred_separator + ".authenticated";
+const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-sound";
+const auto SIGN_KEY_FILE = CONFIG_PATH / "sign-key.pem";
+const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
 bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
     // 首先比较地址族
@@ -89,14 +89,14 @@ void AudioServer::start() {
 void AudioServer::init_client_key() {
     if (!std::filesystem::exists(CONFIG_PATH)) {
         if (!std::filesystem::create_directory(CONFIG_PATH)) {
-            throw AudioException("failed to create config directory. dir=" + CONFIG_PATH);
+            throw AudioException("failed to create config directory. dir=" + CONFIG_PATH.string());
         }
     }
     if (std::filesystem::exists(SIGN_KEY_FILE)) {
-        sign_key_pair = Crypto::ED25519::load_private_key_from_file(SIGN_KEY_FILE);
+        sign_key_pair = Crypto::ED25519::load_private_key_from_file(SIGN_KEY_FILE.string());
     } else {
         sign_key_pair = Crypto::ED25519::generate();
-        sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE);
+        sign_key_pair.write_private_key_to_file(SIGN_KEY_FILE.string());
     }
     if (std::filesystem::exists(AUTHENTICATED_FILE)) {
         std::ifstream auth_file(AUTHENTICATED_FILE);

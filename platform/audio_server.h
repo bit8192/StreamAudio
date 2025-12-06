@@ -10,14 +10,15 @@
 #include <ws2tcpip.h>
 #include <thread>
 #include <condition_variable>
+#include <filesystem>
 
 #pragma comment(lib, "ws2_32.lib")
-const std::string HOME_DIR = std::getenv("USERPROFILE");
+const auto HOME_DIR = std::filesystem::path(std::getenv("USERPROFILE"));
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-const std::string HOME_DIR = std::getenv("HOME");
+const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
 #endif
 #include <condition_variable>
 #include <map>
