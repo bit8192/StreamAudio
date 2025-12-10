@@ -18,32 +18,6 @@ const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-sound";
 const auto SIGN_KEY_FILE = CONFIG_PATH / "sign-key.pem";
 const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
-bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
-    // 首先比较地址族
-    if (lhs.ss_family != rhs.ss_family) {
-        return false;
-    }
-
-    // 根据地址族类型进行具体比较
-    switch (lhs.ss_family) {
-        case AF_INET: {
-            auto a4 = (sockaddr_in *) &lhs;
-            auto b4 = (sockaddr_in *) &rhs;
-            return a4->sin_port == b4->sin_port &&
-                   std::memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
-        }
-        case AF_INET6: {
-            auto a6 = (sockaddr_in6 *) &lhs;
-            auto b6 = (sockaddr_in6 *) &rhs;
-            return a6->sin6_port == b6->sin6_port &&
-                   std::memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
-                   a6->sin6_flowinfo == b6->sin6_flowinfo &&
-                   a6->sin6_scope_id == b6->sin6_scope_id;
-        }
-        default:
-            return false; // 未知地址族
-    }
-}
 
 std::vector<uint8_t> decrypt(const std::vector<uint8_t> &data, const std::vector<uint8_t> &key) {
     const std::vector iv(data.data(), data.data() + 16);
@@ -61,15 +35,15 @@ std::vector<uint8_t> decrypt(const std::vector<uint8_t> &data, const std::vector
     return std::vector(plain_data.data(), plain_data.data() + len);
 }
 
-std::vector<uint8_t> encrypt(const std::vector<uint8_t> &data, const std::vector<uint8_t> &key) {
-    std::vector<uint8_t> cipher_data(data.size() + 16 + 16);
+std::vector<uint8_t> encrypt(const uint8_t* data, const size_t len, const std::vector<uint8_t> &key) {
+    std::vector<uint8_t> cipher_data(len + 16 + 16);
     RAND_bytes(cipher_data.data(), 16);
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), cipher_data.data());
 
-    int len;
-    EVP_EncryptUpdate(ctx, cipher_data.data() + 16, &len, cipher_data.data(), cipher_data.size());
-    EVP_EncryptFinal_ex(ctx, cipher_data.data() + 16 + len, &len);
+    int out_len;
+    EVP_EncryptUpdate(ctx, cipher_data.data() + 16, &out_len, data, len);
+    EVP_EncryptFinal_ex(ctx, cipher_data.data() + 16 + out_len, &out_len);
 
     EVP_CIPHER_CTX_free(ctx);
 
@@ -170,20 +144,29 @@ void AudioServer::send_to_all(const data_pack &pack) const {
     }
 }
 
-void AudioServer::send_to_client(const client_info *client, const data_pack &pack) const {
-    if (client == nullptr) return;
-    send_to(client->address, pack);
+void AudioServer::send_to_client(const client_info& client, const data_pack &pack) const {
+    send_to(client.address, pack);
 }
 
 void AudioServer::send_to(const sockaddr_storage &addr, const data_pack &pack) const {
+    if (!pack.data) {
+        Logger::e("AudioServer.send_to", "data pack is empty");
+        return;
+    }
+    Logger::d("AudioServer.send_to", "sending to client: data ptr = " + std::to_string(0) + " data length = " + std::to_string(pack.data_operator.remaining()));
     const auto result = sendto(server_socket, reinterpret_cast<const char *>(pack.data.get()),
-                               static_cast<int>(pack.data_operator.remaining()), 0,
+                               static_cast<int>(pack.data_operator.capacity()), 0,
                                (sockaddr *) &addr, sizeof(addr));
     if ( result < 1 ) {
         Logger::e("AudioServer::send_to", "send failed: " + std::to_string(result));
     }else if (result < pack.data_operator.remaining()) {
         Logger::e("AudioServer::send_to", "not sent completely: " + std::to_string(result) + "/" + std::to_string(pack.data_operator.remaining()));
     }
+}
+
+void AudioServer::send_encrypted(const client_info& client, const data_pack &pack) const {
+    data_pack encrypted_pack(PACK_TYPE_ENCRYPTED_DATA,pack.data_operator.capacity() + 64);
+    encrypted_pack.data_operator.put_array(encrypt(pack.data.get(), pack.data_operator.capacity(), client.session_key));
 }
 
 std::vector<uint8_t> read_key_value(DataOperator& data_pointer) {
@@ -197,8 +180,15 @@ std::vector<uint8_t> read_key_value(DataOperator& data_pointer) {
     return data_pointer.get_array(key_length);
 }
 
-void AudioServer::handle_message(const sockaddr_storage &addr, const uint8_t* ptr, const size_t size, client_info *client) {
-    if (size < 1) return;
+bool AudioServer::is_paired(const client_info& client) const {
+    return client.ecdh_pub_key != nullptr && client.key != nullptr && client_keys.contains(client.key->name);
+}
+
+void AudioServer::handle_message(const sockaddr_storage &addr, const uint8_t* ptr, const size_t size, client_info& client) {
+    if (size < 4) {
+        Logger::e("AudioServer.handle_message", "invalid package size: " + std::to_string(size));
+        return;
+    }
 
     auto data_operator = DataOperator(ptr, size);
 
@@ -214,14 +204,7 @@ void AudioServer::handle_message(const sockaddr_storage &addr, const uint8_t* pt
                   "receive message: addr=" + std::string(ip) + "\tport=" +
                   std::to_string(ntohs(addr6->sin6_port)) + "\tdata=" + data_operator.to_hex());
     }
-    if (client == nullptr)
-        for (client_info &c: clients) {
-            if (c.address == addr) {
-                client = &c;
-                client->active_time = std::chrono::high_resolution_clock::now();
-                break;
-            }
-        }
+    client.active_time = std::chrono::high_resolution_clock::now();
 
     const uint16_t& pack_length = data_operator.get_uint16();
     const uint16_t& pack_version = data_operator.get_uint16();
@@ -240,30 +223,26 @@ check_pack_type:
         case PACK_TYPE_PING: {
             //ping
             const data_pack pack{PACK_TYPE_PONG, 0};
-            send_to(client->address, pack);
+            send_to(addr, pack);
             return;
         }
         case PACK_TYPE_PONG: //pong
             return;
         case PACK_TYPE_ECDH_REQUEST: {
-            if (client->ecdh_pub_key != nullptr) {
-                Logger::e("AudioServer.handle_message", "repeat ecdh. client name=" + client->key->name);
+            if (client.ecdh_pub_key != nullptr) {
+                Logger::e("AudioServer.handle_message", "repeat ecdh. client name=" + client.key->name);
                 return;
             }
-            client->ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(data_operator)));
+            client.ecdh_pub_key = std::make_unique<Crypto::X25519>(Crypto::X25519::load_public_key_from_mem(read_key_value(data_operator)));
             const auto key = ecdh_key_pair.export_public_key();
-            const size_t send_pack_len = 1 + 16 + 2 + key.size();
-            auto res = new char[send_pack_len];
-            char* res_p = res;
+            data_pack pack{PACK_TYPE_ECDH_RESPONSE, 1 + 16 + 2 + key.size()};
             auto salt = std::vector<uint8_t>(16);
             RAND_bytes(salt.data(), static_cast<int>(salt.size()));
-            client->session_key = ecdh_key_pair.derive_shared_secret(*client->ecdh_pub_key, salt);
-            *res_p = PACK_TYPE_ECDH_RESPONSE;                                   res_p += sizeof(PACK_TYPE_ECDH_RESPONSE);
-            memcpy(res_p, salt.data(), salt.size());                        res_p += salt.size();
-            *reinterpret_cast<short *>(res_p) = static_cast<short>(key.size()); res_p += sizeof(short);
-            memcpy(res_p, key.data(), key.size());
-            sendto(server_socket, res, send_pack_len, 0, (sockaddr *) &addr,sizeof(sockaddr_in));
-            delete[] res;
+            pack.data_operator.put_array(salt);
+            client.session_key = ecdh_key_pair.derive_shared_secret(*client.ecdh_pub_key, salt);
+            pack.data_operator.put_uint16(key.size());
+            pack.data_operator.put_array(key.data(), key.size());
+            send_to_client(client, pack);
             return;
         }
         // case PACK_TYPE_ECDH_RESPONSE: //ignore
@@ -275,34 +254,36 @@ check_pack_type:
                 return;
             }
             wait_pair_hmac = data_operator.get_array(32);
-            pair_client = client;
+            pair_client = &client;
             pair_timestamp = std::chrono::high_resolution_clock::now();
         }
         case PACK_TYPE_PAIR_COMPLETED: {
             if (!has_pair()) return;
             const auto client_pub_key = Crypto::ED25519::load_public_key_from_mem(wait_pair_pub_key);
             if (!client_pub_key.verify(ptr, data_operator.position(), data_operator.get_array(64))) {
-                Logger::e("AudioServer.handler_message", "pair completed: sign verify failed. client name=" + client->key->name);
+                Logger::e("AudioServer.handler_message", "pair completed: sign verify failed. client name=" + client.key->name);
                 clear_pair();
                 return;
             }
             key_info key(std::make_unique<Crypto::ED25519>(client_pub_key), wait_pair_client_name);
+            client.key = &key;
             add_client_key(key);
         }
         //等待用户输入代码后再发送响应
         // case PACK_TYPE_PAIR_RESPONSE: //ignore
         case PACK_TYPE_AUDIO_START: //audio start
         {
-            if (client == nullptr) {
+            if (!is_paired(client)) {
                 Logger::e("AudioServer.handle_message", "unauthorized client control.");
                 return;
             }
-            client->play = true;
-
+            client.play = true;
+            data_pack pack{PACK_TYPE_AUDIO_INFO, sizeof(audio_info) + 1};
             std::vector<uint8_t> audio_info_pack(sizeof(audio_info) + 1);
             audio_info_pack[0] = PACK_TYPE_AUDIO_INFO;
+            pack.data_operator.put_array(reinterpret_cast<const uint8_t *>(&audio_info), sizeof(audio_info));
             memcpy(&audio_info_pack[1], &audio_info, sizeof(audio_info));
-            const auto encrypted_data = encrypt(audio_info_pack, client->session_key);
+            const auto encrypted_data = encrypt(audio_info_pack.data(), audio_info_pack.size(), client.session_key);
             char res[1 + encrypted_data.size() + 64];
             res[0] = PACK_TYPE_AUDIO_INFO;
             memcpy(res + 1, encrypted_data.data(), encrypted_data.size());
@@ -312,16 +293,12 @@ check_pack_type:
             break;
         }
         case PACK_TYPE_AUDIO_STOP: //audio stop
-            if (client == nullptr) {
-                Logger::e("AudioServer.handle_message", "unauthorized client control.");
-                return;
-            }
-            client->play = false;
+            client.play = false;
             break;
         case PACK_TYPE_AUDIO_DATA: //audio data ignore
             break;
         case PACK_TYPE_ENCRYPTED_DATA:
-            if (client == nullptr || client->session_key.empty()) {
+            if (client.session_key.empty()) {
                 Logger::e("AudioServer.handle_message", "invalid sign data: no session key. ");
                 return;
             }
@@ -361,7 +338,7 @@ bool AudioServer::pair(const std::string &code, const std::string &name) {
     pack.data_operator.put_array(pub_key);
     const auto hmac = Crypto::hmac_sha256(key, pub_key);
     pack.data_operator.put_array(hmac);
-    send_to_client(pair_client, pack);
+    send_to_client(*pair_client, pack);
     wait_pair_client_name = name;
     return true;
 }

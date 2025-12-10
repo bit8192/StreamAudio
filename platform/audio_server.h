@@ -22,6 +22,7 @@ const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
 #endif
 #include <condition_variable>
 #include <map>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -70,7 +71,7 @@ struct data_pack {
     std::unique_ptr<uint8_t[]> data;
     DataOperator data_operator;
 
-    explicit data_pack(const uint8_t pack_type, const size_t size, const uint16_t version = AUDIO_SERVER_VERSION): data(std::make_unique<uint8_t[]>(size)), data_operator(data.get(), size) {
+    explicit data_pack(const uint8_t pack_type, const size_t size, const uint16_t version = AUDIO_SERVER_VERSION): data(std::make_unique<uint8_t[]>(size)), data_operator(data.get(), size + 5) {
         data_operator.put_uint16(size + 5);
         data_operator.put_uint16(version);
         data_operator.put(pack_type);
@@ -93,17 +94,24 @@ class AudioServer final {
     bool running = false;
     std::thread server_thread;
     void receive_data();
-    void handle_message(const sockaddr_storage& addr, const uint8_t* ptr, const size_t size, client_info *client = nullptr);
+
+    std::optional<std::reference_wrapper<client_info>> find_client(const sockaddr_storage& addr);
+
+    void handle_message(const sockaddr_storage& addr, const uint8_t* ptr, size_t size, client_info& client);
+
+    [[nodiscard]] bool is_paired(const client_info& client) const;
+
+    void send_to_all(const data_pack& pack) const;
+
+    void send_to_client(const client_info& client, const data_pack& pack) const;
+
+    void send_to(const sockaddr_storage& addr, const data_pack& pack) const;
+
+    void send_encrypted(const client_info& client, const data_pack& pack) const;
 public:
     AudioServer(int port, const struct audio_info& audio_info);
 
     void start();
-
-    void send_to_all(const data_pack& pack) const;
-
-    void send_to_client(const client_info* client, const data_pack& pack) const;
-
-    void send_to(const sockaddr_storage& addr, const data_pack& pack) const;
 
     bool pair(const std::string& code, const std::string& name);
 

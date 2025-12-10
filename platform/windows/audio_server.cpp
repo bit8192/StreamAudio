@@ -41,6 +41,42 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
     }
 }
 
+bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
+    // 首先比较地址族
+    if (lhs.ss_family != rhs.ss_family) {
+        return false;
+    }
+
+    // 根据地址族类型进行具体比较
+    switch (lhs.ss_family) {
+        case AF_INET: {
+            auto a4 = (sockaddr_in *) &lhs;
+            auto b4 = (sockaddr_in *) &rhs;
+            return a4->sin_port == b4->sin_port &&
+                   memcmp(&a4->sin_addr, &b4->sin_addr, sizeof(a4->sin_addr)) == 0;
+        }
+        case AF_INET6: {
+            auto a6 = (sockaddr_in6 *) &lhs;
+            auto b6 = (sockaddr_in6 *) &rhs;
+            return a6->sin6_port == b6->sin6_port &&
+                   memcmp(&a6->sin6_addr, &b6->sin6_addr, sizeof(a6->sin6_addr)) == 0 &&
+                   a6->sin6_flowinfo == b6->sin6_flowinfo &&
+                   a6->sin6_scope_id == b6->sin6_scope_id;
+        }
+        default:
+            return false; // 未知地址族
+    }
+}
+
+std::optional<std::reference_wrapper<client_info>> AudioServer::find_client(const sockaddr_storage &addr) {
+    for (client_info &c: clients) {
+        if (c.address == addr) {
+            return c;
+        }
+    }
+    return std::nullopt;
+}
+
 void AudioServer::receive_data() {
     char buffer[PACKAGE_SIZE];
     sockaddr_storage client_addr{};
@@ -52,8 +88,13 @@ void AudioServer::receive_data() {
             Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + std::to_string(len));
             continue;
         }
+        auto client_opt = find_client(client_addr);
+        if (!client_opt.has_value()) {
+            auto& client = clients.emplace_back(client_addr);
+            client_opt.emplace(client);
+        }
         try {
-            handle_message(client_addr, reinterpret_cast<const uint8_t *>(buffer), len);
+            handle_message(client_addr, reinterpret_cast<const uint8_t *>(buffer), len, client_opt.value());
         } catch (const std::exception &e) {
             Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
         }

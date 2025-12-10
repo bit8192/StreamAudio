@@ -65,6 +65,8 @@ public:
 
     void flip();
 
+    [[nodiscard]] size_t capacity() const;
+
 private:
     const uint8_t *raw_pointer;
     const uint8_t *raw_pointer_end;

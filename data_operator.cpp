@@ -51,7 +51,7 @@ uint16_t DataOperator::get_uint16() {
 
 void DataOperator::put_uint16(const uint16_t &value) {
     checkBounds(2);
-    put_array_with_order(reinterpret_cast<const uint8_t *>(value), 2);
+    put_array_with_order(reinterpret_cast<const uint8_t *>(&value), 2);
 }
 
 int DataOperator::get_int() {
@@ -175,4 +175,8 @@ void DataOperator::clear() {
 void DataOperator::flip() {
     limit_pointer = pointer;
     pointer = const_cast<uint8_t *>(raw_pointer);
+}
+
+size_t DataOperator::capacity() const {
+    return size;
 }
