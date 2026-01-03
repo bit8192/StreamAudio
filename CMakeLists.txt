@@ -1,11 +1,13 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 4.1.2)
 project(StreamSound)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_AUTOMOC ON)
 
 if (WIN32)
     set(PLATFORM "windows")
     set(STREAM_SOUND_LINK_LIBRARIES ws2_32)
+    set(CMAKE_PREFIX_PATH "D:/msys64/mingw64")
 elseif (LINUX)
     set(PLATFORM "linux")
     set(STREAM_SOUND_LINK_LIBRARIES pulse pulse-simple)
@@ -21,6 +23,10 @@ add_executable(StreamSound main.cpp
         logger.cpp
         logger.h
         platform/audio_server_common.cpp
+        platform/${PLATFORM}/config.cpp
+        platform/config.h
+        platform/tray_icon.cpp
+        platform/tray_icon.h
         tools/crypto.cpp
         tools/crypto.h
         tools/base64.cpp
@@ -35,8 +41,64 @@ add_executable(StreamSound main.cpp
         data_pack.h
 )
 
+# Debug
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_definitions(StreamSound PUBLIC DEBUG_MODE=1)
+endif()
+
+# Openssl
 find_package(OpenSSL REQUIRED)
 list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
 
+# Qt
+find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
+list(APPEND STREAM_SOUND_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets)
+
 target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})
-target_link_directories(StreamSound PRIVATE ${OPENSSL_INCLUDE_DIR})
+
+if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    # ====================================== 拷贝QT依赖
+    set(DEBUG_SUFFIX)
+    if (MSVC AND CMAKE_BUILD_TYPE MATCHES "Debug")
+        set(DEBUG_SUFFIX "d")
+    endif ()
+    set(QT_INSTALL_PATH "${CMAKE_PREFIX_PATH}")
+    if (NOT EXISTS "${QT_INSTALL_PATH}/bin")
+        set(QT_INSTALL_PATH "${QT_INSTALL_PATH}/..")
+        if (NOT EXISTS "${QT_INSTALL_PATH}/bin")
+            set(QT_INSTALL_PATH "${QT_INSTALL_PATH}/..")
+        endif ()
+    endif ()
+    if (EXISTS "${QT_INSTALL_PATH}/plugins/platforms/qwindows${DEBUG_SUFFIX}.dll")
+        set(QT_PLUGINS_DIR "${QT_INSTALL_PATH}/plugins")
+    elseif (EXISTS "${QT_INSTALL_PATH}/share/qt6/plugins/platforms/qwindows${DEBUG_SUFFIX}.dll")
+        set(QT_PLUGINS_DIR "${QT_INSTALL_PATH}/share/qt6/plugins")
+    else ()
+        message(FATAL_ERROR "NOT FOUND QT PLUGINS DIR")
+    endif ()
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/platforms/")
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            "${QT_PLUGINS_DIR}/platforms/qwindows${DEBUG_SUFFIX}.dll"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/platforms/")
+    foreach (QT_LIB Core)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy
+                "${QT_INSTALL_PATH}/bin/Qt6${QT_LIB}${DEBUG_SUFFIX}.dll"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+    endforeach (QT_LIB)
+    # =========================================== 拷贝OpenSSL依赖
+    set(OPENSSL_CRYPTO_DLL_FILE "${CMAKE_PREFIX_PATH}/bin/libcrypto-3-x64.dll")
+    if (EXISTS "${OPENSSL_CRYPTO_DLL_FILE}")
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${OPENSSL_CRYPTO_DLL_FILE}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+    endif ()
+    set(OPENSSL_SSL_DLL_FILE "${CMAKE_PREFIX_PATH}/bin/libssl-3-x64.dll")
+    if (EXISTS "${OPENSSL_SSL_DLL_FILE}")
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${OPENSSL_SSL_DLL_FILE}" "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+    endif ()
+endif ()
+
+# 拷贝png图标
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/icon.png" "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
