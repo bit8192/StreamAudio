@@ -23,7 +23,7 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
         throw SocketException("socket init failed.");
-    server_socket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_IP);
+    server_socket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
     if (server_socket == INVALID_SOCKET) {
         const auto error = "socket create failed. error=" + std::to_string(WSAGetLastError());
         throw SocketException(error.c_str());
@@ -38,6 +38,10 @@ AudioServer::AudioServer(const int port, const struct audio_info &audio_info): p
 
     if (bind(server_socket, reinterpret_cast<sockaddr *>(&server_addr), sizeof(server_addr)) == SOCKET_ERROR) {
         throw SocketException("bind failed");
+    }
+
+    if (listen(server_socket, SOMAXCONN) == SOCKET_ERROR) {
+        throw SocketException("listen failed");
     }
 }
 
@@ -68,40 +72,78 @@ bool operator==(const sockaddr_storage &lhs, const sockaddr_storage &rhs) {
     }
 }
 
-std::optional<std::reference_wrapper<client_info>> AudioServer::find_client(const sockaddr_storage &addr) {
-    for (client_info &c: clients) {
-        if (c.address == addr) {
-            return c;
-        }
-    }
-    return std::nullopt;
-}
-
-void AudioServer::receive_data() {
-    char buffer[PACKAGE_SIZE];
-    sockaddr_storage client_addr{};
-    int addr_len = sizeof(client_addr);
+void AudioServer::accept_connections() {
     while (running) {
-        const int len = recvfrom(server_socket, buffer, PACKAGE_SIZE, 0, reinterpret_cast<sockaddr *>(&client_addr),
-                                 &addr_len);
-        if (len == SOCKET_ERROR) {
-            Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. status=" + std::to_string(len));
+        sockaddr_storage client_addr{};
+        int addr_len = sizeof(client_addr);
+        const SOCKET client_socket = accept(server_socket, reinterpret_cast<sockaddr*>(&client_addr), &addr_len);
+
+        if (client_socket == INVALID_SOCKET) {
+            if (running) {
+                Logger::e(AUDIO_SERVER_LOGTAG, "accept failed. error=" + std::to_string(WSAGetLastError()));
+            }
             continue;
         }
-        auto client_opt = find_client(client_addr);
-        if (!client_opt.has_value()) {
-            auto& client = clients.emplace_back(client_addr);
-            client_opt.emplace(client);
+
+        {
+            std::lock_guard lock(clients_mutex);
+            auto& client = clients.emplace_back();
+            client.address = client_addr;
+            client.socket_fd = client_socket;
+            client.active_time = std::chrono::high_resolution_clock::now();
+            client.connected = true;
+
+            // Start receive thread for this client
+            client.recv_thread = std::thread(&AudioServer::receive_data, this, std::ref(client));
+        }
+
+        Logger::i(AUDIO_SERVER_LOGTAG, "New client connected");
+    }
+}
+
+void AudioServer::receive_data(client_info& client) {
+    char buffer[PACKAGE_SIZE];
+    while (running && client.connected) {
+        const int len = recv(client.socket_fd, buffer, PACKAGE_SIZE, 0);
+        if (len <= 0) {
+            if (len == 0) {
+                Logger::i(AUDIO_SERVER_LOGTAG, "Client disconnected");
+            } else {
+                Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. error=" + std::to_string(WSAGetLastError()));
+            }
+            client.connected = false;
+            break;
         }
         try {
-            handle_message(client_addr, reinterpret_cast<const uint8_t *>(buffer), len, client_opt.value());
+            handle_message(client.address, reinterpret_cast<const uint8_t *>(buffer), len, client);
         } catch (const std::exception &e) {
             Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
         }
     }
+    closesocket(client.socket_fd);
 }
 
 AudioServer::~AudioServer() {
     running = false;
+
+    // Close server socket to unblock accept
     closesocket(server_socket);
+
+    // Wait for accept thread
+    if (accept_thread.joinable()) {
+        accept_thread.join();
+    }
+
+    // Close all client connections and wait for threads
+    {
+        std::lock_guard lock(clients_mutex);
+        for (auto& client : clients) {
+            client.connected = false;
+            closesocket(client.socket_fd);
+            if (client.recv_thread.joinable()) {
+                client.recv_thread.join();
+            }
+        }
+        clients.clear();
+    }
 }

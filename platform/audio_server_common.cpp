@@ -53,10 +53,10 @@ std::vector<uint8_t> encrypt(const uint8_t* data, const size_t len, const std::v
 void AudioServer::start() {
     if (running) {
         running = false;
-        if (server_thread.joinable()) server_thread.join();
+        if (accept_thread.joinable()) accept_thread.join();
     }
     running = true;
-    server_thread = std::thread(&AudioServer::receive_data, this);
+    accept_thread = std::thread(&AudioServer::accept_connections, this);
 }
 
 
@@ -131,36 +131,35 @@ void AudioServer::delete_client_key(const key_info& key) {
 }
 
 void AudioServer::send_to_all(const data_pack &pack) const {
-    sockaddr_in client_addr{};
-    client_addr.sin_family = AF_INET;
-    client_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    client_addr.sin_port = htons(port);
-    const auto result = sendto(server_socket, reinterpret_cast<const char *>(pack.data.get()), pack.data_operator.remaining(), 0,
-           (sockaddr *) &client_addr, sizeof(client_addr));
-    if ( result < 1 ) {
-        Logger::e("AudioServer::send_to_all", "send failed: " + std::to_string(result));
-    }else if (result < pack.data_operator.remaining()) {
-        Logger::e("AudioServer::send_to_all", "not sent completely: " + std::to_string(result) + "/" + std::to_string(pack.data_operator.remaining()));
+    std::lock_guard lock(const_cast<std::mutex&>(clients_mutex));
+    for (const auto& client : clients) {
+        if (!client.connected) continue;
+        const auto result = send(client.socket_fd, reinterpret_cast<const char *>(pack.data.get()),
+                                pack.data_operator.remaining(), 0);
+        if ( result < 1 ) {
+            Logger::e("AudioServer::send_to_all", "send failed: " + std::to_string(result));
+        } else if (result < pack.data_operator.remaining()) {
+            Logger::e("AudioServer::send_to_all", "not sent completely: " + std::to_string(result) + "/" + std::to_string(pack.data_operator.remaining()));
+        }
     }
 }
 
 void AudioServer::send_to_client(const client_info& client, const data_pack &pack) const {
-    send_to(client.address, pack);
-}
-
-void AudioServer::send_to(const sockaddr_storage &addr, const data_pack &pack) const {
-    if (!pack.data) {
-        Logger::e("AudioServer.send_to", "data pack is empty");
+    if (!client.connected) {
+        Logger::w("AudioServer::send_to_client", "client not connected");
         return;
     }
-    Logger::d("AudioServer.send_to", "sending to client: data ptr = " + std::to_string(0) + " data length = " + std::to_string(pack.data_operator.remaining()));
-    const auto result = sendto(server_socket, reinterpret_cast<const char *>(pack.data.get()),
-                               static_cast<int>(pack.data_operator.capacity()), 0,
-                               (sockaddr *) &addr, sizeof(addr));
+    if (!pack.data) {
+        Logger::e("AudioServer::send_to_client", "data pack is empty");
+        return;
+    }
+    Logger::d("AudioServer::send_to_client", "sending to client: data length = " + std::to_string(pack.data_operator.remaining()));
+    const auto result = send(client.socket_fd, reinterpret_cast<const char *>(pack.data.get()),
+                            static_cast<int>(pack.data_operator.capacity()), 0);
     if ( result < 1 ) {
-        Logger::e("AudioServer::send_to", "send failed: " + std::to_string(result));
-    }else if (result < pack.data_operator.remaining()) {
-        Logger::e("AudioServer::send_to", "not sent completely: " + std::to_string(result) + "/" + std::to_string(pack.data_operator.remaining()));
+        Logger::e("AudioServer::send_to_client", "send failed: " + std::to_string(result));
+    } else if (result < pack.data_operator.remaining()) {
+        Logger::e("AudioServer::send_to_client", "not sent completely: " + std::to_string(result) + "/" + std::to_string(pack.data_operator.remaining()));
     }
 }
 
@@ -223,7 +222,7 @@ check_pack_type:
         case PACK_TYPE_PING: {
             //ping
             const data_pack pack{PACK_TYPE_PONG, 0};
-            send_to(addr, pack);
+            send_to_client(client, pack);
             return;
         }
         case PACK_TYPE_PONG: //pong
@@ -289,7 +288,7 @@ check_pack_type:
             memcpy(res + 1, encrypted_data.data(), encrypted_data.size());
             const auto sign = sign_key_pair.sign(encrypted_data);
             memcpy(res + 1 + encrypted_data.size(), sign.data(), sign.size());
-            sendto(server_socket, res, 1 + encrypted_data.size() + 64, 0, (sockaddr *) &addr, sizeof(sockaddr_in));
+            send(client.socket_fd, res, 1 + encrypted_data.size() + 64, 0);
             break;
         }
         case PACK_TYPE_AUDIO_STOP: //audio stop
