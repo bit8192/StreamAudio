@@ -15,6 +15,7 @@
 #pragma comment(lib, "ws2_32.lib")
 const auto HOME_DIR = std::filesystem::path(std::getenv("USERPROFILE"));
 #else
+#include <filesystem>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
