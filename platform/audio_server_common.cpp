@@ -358,3 +358,28 @@ bool AudioServer::has_pair() {
     }
     return true;
 }
+
+std::string AudioServer::generate_pair_code() {
+    // 生成6位随机数字配对码
+    unsigned char random_bytes[3];
+    RAND_bytes(random_bytes, 3);
+
+    // 将3字节转换为6位数字 (0-999999)
+    uint32_t num = (random_bytes[0] << 16) | (random_bytes[1] << 8) | random_bytes[2];
+    num = num % 1000000;
+
+    char code[7];
+    snprintf(code, sizeof(code), "%06u", num);
+    current_pair_code = code;
+
+    Logger::i(LOG_TAG, "生成配对码: " + current_pair_code);
+    return current_pair_code;
+}
+
+std::string AudioServer::get_pair_code() const {
+    return current_pair_code;
+}
+
+int AudioServer::get_port() const {
+    return port;
+}

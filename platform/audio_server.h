@@ -90,6 +90,7 @@ struct data_pack {
 
 class AudioServer final {
     int port;
+    std::string current_pair_code;  // 当前配对码
     Crypto::X25519 ecdh_key_pair = Crypto::X25519::generate();
     Crypto::ED25519 sign_key_pair;
     std::vector<uint8_t> wait_pair_pub_key;
@@ -127,6 +128,15 @@ public:
     void clear_pair();
 
     bool has_pair();
+
+    // 生成新的配对码
+    std::string generate_pair_code();
+
+    // 获取当前配对码
+    [[nodiscard]] std::string get_pair_code() const;
+
+    // 获取端口
+    [[nodiscard]] int get_port() const;
 
     ~AudioServer();
 

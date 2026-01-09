@@ -8,29 +8,24 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QObject>
-#include <functional>
+#include <memory>
 
-// 菜单项回调函数类型
-using TrayMenuCallback = std::function<void(const QString&)>;
+class AudioServer;
+class QRCodeDialog;
 
 class TrayIcon : public QObject {
     Q_OBJECT
 
 public:
-    explicit TrayIcon(const QString& icon_path, TrayMenuCallback callback, QObject* parent = nullptr);
+    explicit TrayIcon(const QString& icon_path, std::shared_ptr<AudioServer> server, QObject* parent = nullptr);
     ~TrayIcon() override;
 
-    // 显示托盘图标
     void show();
-
-    // 隐藏托盘图标
     void hide();
-
-    // 设置提示文本
+    void update_icon(const QString& icon_path);
     void set_tooltip(const QString& tooltip);
 
-    // 更新图标
-    void update_icon(const QString& icon_path);
+    [[nodiscard]] int get_port() const;
 
 private slots:
     void on_menu_triggered(QAction* action);
@@ -39,9 +34,12 @@ private slots:
 private:
     QSystemTrayIcon* tray_icon_;
     QMenu* context_menu_;
-    TrayMenuCallback menu_callback_;
+    std::shared_ptr<AudioServer> server_;
+    QRCodeDialog* qr_dialog_ = nullptr;
 
     void create_menu();
+    void show_pair_qrcode();
+    void show_about();
 };
 
 #endif //STREAMSOUND_TRAY_ICON_H

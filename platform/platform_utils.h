@@ -5,9 +5,15 @@
 #ifndef PLATFORM_UTILS_H
 #define PLATFORM_UTILS_H
 #include <string>
+#include <vector>
 
 
 namespace PlatformUtils {
+    // 获取本机所有非回环 IPv4 地址
+    std::vector<std::string> get_local_ip_addresses();
+
+    // 获取首选的本机 IP 地址（优先返回局域网地址）
+    std::string get_preferred_ip_address();
 };
 
 

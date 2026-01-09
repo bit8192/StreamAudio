@@ -5,8 +5,8 @@
 #include <thread>
 #include <openssl/rand.h>
 #include <QApplication>
-#include <QMessageBox>
 
+#include "logger.h"
 #include "platform/audio_server.h"
 #include "platform/audio.h"
 #include "platform/config.h"
@@ -109,61 +109,35 @@ void test_crypto() {
     signKeyPair.write_public_key_to_file("public_key1.pem");
 }
 
+constexpr char LOG_TAG[] = "Main";
+
 int main(int argc, char *argv[]) {
     // 创建 Qt 应用
     QApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
 
     // 加载配置
-    auto config = Config::load();
+    const auto config = Config::load();
 
-    // 启动服务器线程
-    std::thread server_thread([&config]() {
-        auto audio = Audio();
-        auto server = AudioServer(config.port, audio.get_audio_info());
-        auto format = audio.get_audio_info();
+    // 创建音频服务器
+    auto audio = Audio();
+    const auto server = std::make_shared<AudioServer>(config.port, audio.get_audio_info());
+    const auto format = audio.get_audio_info();
 
-        std::cout << "StreamSound 服务器已启动" << std::endl;
-        std::cout << "端口: " << config.port << std::endl;
-        std::cout << "采样率: " << format.sample_rate << std::endl;
-        std::cout << "位深度: " << format.bits << std::endl;
-        std::cout << "格式: " << format.format << std::endl;
-        std::cout << "声道: " << format.channels << std::endl;
+    std::cout << "StreamSound 服务器已启动" << std::endl;
+    Logger::i(LOG_TAG,"端口: {}", config.port);
+    Logger::i(LOG_TAG,"采样率: {}", format.sample_rate);
+    Logger::i(LOG_TAG,"位深度: {}", format.bits);
+    Logger::i(LOG_TAG,"格式: {}", format.format);
+    Logger::i(LOG_TAG,"声道: {}", format.channels);
 
-        server.start();
-
-        // 保持服务器运行
-        while (true) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-    });
-
-    // 定义托盘菜单回调
-    auto menu_callback = [](const QString& action) {
-        if (action == "pair_qrcode") {
-            // TODO: 显示配对二维码
-            QMessageBox::information(nullptr, "配对二维码",
-                "配对二维码功能开发中...\n请使用命令行 pair 命令进行配对");
-        } else if (action == "about") {
-            QMessageBox::about(nullptr, "关于 StreamSound",
-                "StreamSound v1.0\n\n"
-                "跨平台音频流服务器\n"
-                "支持 Windows 和 Linux\n\n"
-                "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");
-        }
-    };
+    // 启动服务器
+    server->start();
 
     // 创建托盘图标
-    TrayIcon tray("icon.png", menu_callback);
-    tray.set_tooltip(QString("StreamSound - 端口: %1").arg(config.port));
+    TrayIcon tray("icon.png", server);
     tray.show();
 
-    std::cout << "托盘图标已显示，右键查看菜单" << std::endl;
-
     // 运行 Qt 事件循环
-    int ret = app.exec();
-
-    // 注意：服务器线程会在程序退出时被强制终止
-    // 如果需要优雅关闭，应该添加信号机制
-    return ret;
+    return app.exec();
 }

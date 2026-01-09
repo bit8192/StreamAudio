@@ -3,32 +3,37 @@
 //
 
 #include "tray_icon.h"
+#include "audio_server.h"
+#include "qrcode_dialog.h"
+#include "platform_utils.h"
 #include <QAction>
 #include <QIcon>
 #include <QApplication>
+#include <QMessageBox>
 #include "../logger.h"
 
 constexpr char LOG_TAG[] = "TrayIcon";
 
-TrayIcon::TrayIcon(const QString& icon_path, TrayMenuCallback callback, QObject* parent)
-    : QObject(parent), menu_callback_(std::move(callback)) {
+TrayIcon::TrayIcon(const QString& icon_path, std::shared_ptr<AudioServer> server, QObject* parent)
+    : QObject(parent), server_(std::move(server)) {
 
-    // 创建托盘图标
     tray_icon_ = new QSystemTrayIcon(this);
 
-    // 设置图标
     QIcon icon(icon_path);
     if (icon.isNull()) {
         Logger::w(LOG_TAG, "无法加载图标: " + icon_path.toStdString());
     }
     tray_icon_->setIcon(icon);
 
-    // 创建右键菜单
     create_menu();
 
-    // 连接信号
     connect(tray_icon_, &QSystemTrayIcon::activated,
             this, &TrayIcon::on_activated);
+
+    // 设置默认 tooltip
+    if (server_) {
+        tray_icon_->setToolTip(QString("StreamSound - 端口: %1").arg(server_->get_port()));
+    }
 
     Logger::i(LOG_TAG, "托盘图标已创建");
 }
@@ -38,6 +43,10 @@ TrayIcon::~TrayIcon() {
         tray_icon_->hide();
     }
     Logger::i(LOG_TAG, "托盘图标已销毁");
+}
+
+int TrayIcon::get_port() const {
+    return server_ ? server_->get_port() : 0;
 }
 
 void TrayIcon::create_menu() {
@@ -104,16 +113,59 @@ void TrayIcon::on_menu_triggered(QAction* action) {
     QString action_data = action->data().toString();
     Logger::i(LOG_TAG, "菜单项被点击: " + action_data.toStdString());
 
-    // 如果是退出，直接退出应用
     if (action_data == "quit") {
         QApplication::quit();
+    } else if (action_data == "pair_qrcode") {
+        show_pair_qrcode();
+    } else if (action_data == "about") {
+        show_about();
+    }
+}
+
+void TrayIcon::show_pair_qrcode() {
+    if (!server_) {
+        Logger::e(LOG_TAG, "AudioServer 未设置");
+        QMessageBox::warning(nullptr, "错误", "服务器未初始化");
         return;
     }
 
-    // 调用回调函数
-    if (menu_callback_) {
-        menu_callback_(action_data);
+    // 生成配对码
+    std::string pairCode = server_->generate_pair_code();
+
+    // 获取本机 IP 地址
+    std::string ipAddress = PlatformUtils::get_preferred_ip_address();
+    int port = server_->get_port();
+
+    // 构造二维码内容: streamsound://PairCode@IP:Port
+    QString qrContent = QString("streamsound://%1@%2:%3")
+        .arg(QString::fromStdString(pairCode))
+        .arg(QString::fromStdString(ipAddress))
+        .arg(port);
+
+    // 显示二维码对话框
+    if (qr_dialog_) {
+        qr_dialog_->setContent(qrContent);
+        qr_dialog_->show();
+        qr_dialog_->raise();
+        qr_dialog_->activateWindow();
+    } else {
+        qr_dialog_ = new QRCodeDialog(qrContent);
+        qr_dialog_->setAttribute(Qt::WA_DeleteOnClose);
+        connect(qr_dialog_, &QDialog::destroyed, this, [this]() {
+            qr_dialog_ = nullptr;
+        });
+        qr_dialog_->show();
     }
+
+    Logger::i(LOG_TAG, "显示配对二维码: " + qrContent.toStdString());
+}
+
+void TrayIcon::show_about() {
+    QMessageBox::about(nullptr, "关于 StreamSound",
+        "StreamSound v1.0\n\n"
+        "跨平台音频流服务器\n"
+        "支持 Windows 和 Linux\n\n"
+        "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");
 }
 
 void TrayIcon::on_activated(QSystemTrayIcon::ActivationReason reason) {

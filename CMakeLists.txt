@@ -27,14 +27,19 @@ add_executable(StreamSound main.cpp
         platform/config.h
         platform/tray_icon.cpp
         platform/tray_icon.h
+        platform/qrcode_dialog.cpp
+        platform/qrcode_dialog.h
+        platform/platform_utils_common.cpp
+        platform/platform_utils.h
         tools/crypto.cpp
         tools/crypto.h
         tools/base64.cpp
         tools/base64.h
         tools/string.cpp
         tools/string.h
+        tools/qrcodegen.cpp
+        tools/qrcodegen.h
         platform/windows/platform_utils.cpp
-        platform/platform_utils.h
         data_operator.cpp
         data_operator.h
         data_pack.cpp
@@ -51,8 +56,8 @@ find_package(OpenSSL REQUIRED)
 list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
 
 # Qt
-find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED)
-list(APPEND STREAM_SOUND_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets)
+find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
+list(APPEND STREAM_SOUND_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets Qt::Network)
 
 target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})
 
