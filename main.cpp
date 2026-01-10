@@ -13,6 +13,7 @@
 #include "platform/tray_icon.h"
 #include "tools/crypto.h"
 #include "tools/string.h"
+#include "version.h"
 
 
 void WriteWaveHeader(std::ofstream &ofstream, const audio_info pwfx, uint32_t dataSize) {
@@ -124,7 +125,7 @@ int main(int argc, char *argv[]) {
     const auto server = std::make_shared<AudioServer>(config.port, audio.get_audio_info());
     const auto format = audio.get_audio_info();
 
-    std::cout << "StreamSound 服务器已启动" << std::endl;
+    Logger::i("StreamSound 服务器已启动  version {}", VERSION_NAME);
     Logger::i(LOG_TAG,"端口: {}", config.port);
     Logger::i(LOG_TAG,"采样率: {}", format.sample_rate);
     Logger::i(LOG_TAG,"位深度: {}", format.bits);

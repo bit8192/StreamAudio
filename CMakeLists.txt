@@ -1,8 +1,26 @@
 cmake_minimum_required(VERSION 4.1.2)
-project(StreamSound)
+
+# 读取版本配置
+file(STRINGS "${CMAKE_SOURCE_DIR}/version.properties" VERSION_PROPS)
+foreach(prop ${VERSION_PROPS})
+    if(prop MATCHES "^VERSION_NAME=(.*)$")
+        set(VERSION_NAME ${CMAKE_MATCH_1})
+    elseif(prop MATCHES "^VERSION_CODE=(.*)$")
+        set(VERSION_CODE ${CMAKE_MATCH_1})
+    endif()
+endforeach()
+
+project(StreamSound VERSION ${VERSION_NAME})
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_AUTOMOC ON)
+
+# 生成版本头文件
+configure_file(
+    "${CMAKE_SOURCE_DIR}/version.h.in"
+    "${CMAKE_BINARY_DIR}/version.h"
+)
+include_directories(${CMAKE_BINARY_DIR})
 
 if (WIN32)
     set(PLATFORM "windows")

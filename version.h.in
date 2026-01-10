@@ -1,0 +1,7 @@
+#pragma once
+
+// 自动生成的版本信息文件，请勿手动修改
+// 此文件从 version.properties 生成
+
+#define VERSION_NAME "@VERSION_NAME@"
+#define VERSION_CODE @VERSION_CODE@
