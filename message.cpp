@@ -1,7 +1,8 @@
 #include "message.h"
 #include "logger.h"
-#include <stdexcept>
-#include <cstring>
+#include <version.h>
+
+#include "tools/hextool.h"
 
 // CRC16-CCITT 多项式和初始值
 static constexpr uint16_t CRC_POLYNOMIAL = 0x1021;
@@ -16,7 +17,7 @@ static void init_crc_table() {
     if (crc_table_initialized) return;
 
     for (int i = 0; i < 256; ++i) {
-        uint16_t crc = static_cast<uint16_t>(i << 8);
+        auto crc = static_cast<uint16_t>(i << 8);
         for (int j = 0; j < 8; ++j) {
             if (crc & 0x8000) {
                 crc = (crc << 1) ^ CRC_POLYNOMIAL;
@@ -80,7 +81,7 @@ Message Message::build(
 ) {
     Message msg;
     msg.magic = magic;
-    msg.version = 1; // TODO: 从配置获取版本号
+    msg.version = VERSION_CODE;
     msg.queue_num = queue_num;
     msg.id = id;
     msg.body = std::move(body);
@@ -118,6 +119,19 @@ std::vector<uint8_t> Message::serialize() const {
     return buffer;
 }
 
+std::string Message::to_string() const {
+    return std::format(
+        "Message(magic={},version={},queue_num={},id={},pack_length={},body={},crc={})",
+        ProtocolMagicHelper::get_magic_string(magic),
+        version,
+        queue_num,
+        id,
+        pack_length,
+        HEX_TOOL::to_hex(body->to_byte_array().data(), body->to_byte_array().size()),
+        crc
+    );
+}
+
 // 解析消息
 std::optional<Message> Message::parse(
     const uint8_t* buffer,
@@ -125,14 +139,13 @@ std::optional<Message> Message::parse(
     size_t& bytes_consumed
 ) {
     // 检查最小长度
-    size_t min_magic_len = ProtocolMagicHelper::min_magic_length();
-    if (size < min_magic_len + MIN_LENGTH) {
+    if (size < MIN_MAGIC_LENGTH + MIN_LENGTH) {
         return std::nullopt;
     }
 
     // 匹配魔数
     size_t magic_end_offset = 0;
-    auto magic_opt = ProtocolMagicHelper::match(buffer, size, magic_end_offset);
+    const auto magic_opt = ProtocolMagicHelper::match(buffer, size, magic_end_offset);
     if (!magic_opt) {
         return std::nullopt;
     }
@@ -145,21 +158,20 @@ std::optional<Message> Message::parse(
     const uint8_t* ptr = buffer + magic_end_offset;
 
     // 读取 header（大端序）
-    int32_t version = read_int32_be(ptr);
+    const int32_t version = read_int32_be(ptr);
     ptr += 4;
 
-    int32_t queue_num = read_int32_be(ptr);
+    const int32_t queue_num = read_int32_be(ptr);
     ptr += 4;
 
-    int32_t id = read_int32_be(ptr);
+    const int32_t id = read_int32_be(ptr);
     ptr += 4;
 
-    int32_t pack_length = read_int32_be(ptr);
+    const int32_t pack_length = read_int32_be(ptr);
     ptr += 4;
 
     // 检查是否有足够的数据（body + CRC）
-    size_t remaining = size - (ptr - buffer);
-    if (remaining < static_cast<size_t>(pack_length + 2)) {
+    if (const size_t remaining = size - (ptr - buffer); remaining < pack_length + 2) {
         return std::nullopt;
     }
 

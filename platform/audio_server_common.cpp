@@ -16,6 +16,24 @@ const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-sound";
 const auto SIGN_KEY_FILE = CONFIG_PATH / "sign-key.pem";
 const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
+AudioServer::~AudioServer() {
+    running = false;
+
+    {
+        std::lock_guard lock(devices_mutex);
+        for (const auto& device : devices_) {
+            device->disconnect();
+        }
+    }
+
+    close_socket();
+
+    // Wait for accept thread
+    if (accept_thread.joinable()) {
+        accept_thread.join();
+    }
+}
+
 
 std::vector<uint8_t> decrypt(const std::vector<uint8_t> &data, const std::vector<uint8_t> &key) {
     const std::vector iv(data.data(), data.data() + 16);
@@ -51,11 +69,11 @@ std::vector<uint8_t> encrypt(const uint8_t* data, const size_t len, const std::v
 void AudioServer::accept_device(socket_t socket, const sockaddr_storage& client_addr)
 {
     std::lock_guard lock(devices_mutex);
-    auto& device = devices_.emplace_back(std::make_unique<Device>(
+    const auto& device = devices_.emplace_back(std::make_unique<Device>(
         shared_from_this(),
         socket
     ));
-    device.start
+    device->start_listening();
 }
 
 void AudioServer::start() {

@@ -9,7 +9,7 @@
 #pragma comment(lib, "ws2_32.lib")
 #endif
 
-constexpr const char* TAG = "Device";
+constexpr const char *TAG = "Device";
 
 Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const long msg_wait_timeout)
     : server_(std::move(server)),
@@ -20,13 +20,13 @@ Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const l
       ecdh_completed(false),
       message_id_counter(0),
       queue_num_counter(0) {
-
     // 加载公钥（如果配置中有）
     if (!this->config.public_key.empty()) {
         try {
             auto key_data = Base64::decode(this->config.public_key);
-            public_key = std::make_shared<Crypto::ED25519>(Crypto::ED25519::load_public_key_from_mem(Base64::decode(config.public_key)));
-        } catch (const std::exception& e) {
+            public_key = std::make_shared<Crypto::ED25519>(
+                Crypto::ED25519::load_public_key_from_mem(Base64::decode(config.public_key)));
+        } catch (const std::exception &e) {
             Logger::w(TAG, "Failed to load public key: " + std::string(e.what()));
         }
     }
@@ -42,8 +42,7 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
       connected(true),
       ecdh_completed(false),
       message_id_counter(0),
-      queue_num_counter(0)
-{
+      queue_num_counter(0) {
     session_key.resize(32, 0);
 
     // 启动监听线程
@@ -54,7 +53,7 @@ Device::~Device() {
     disconnect();
 }
 
-bool Device::parse_address(const std::string& address, std::string& host, int& port) {
+bool Device::parse_address(const std::string &address, std::string &host, int &port) {
     if (address.empty()) return false;
     auto colon_pos = address.find(':');
     if (colon_pos == std::string::npos) {
@@ -105,16 +104,12 @@ void Device::connect() {
 #endif
 
     // 连接
-    if (::connect(socket_fd, reinterpret_cast<struct sockaddr*>(&server_addr), sizeof(server_addr)) < 0) {
+    if (::connect(socket_fd, reinterpret_cast<struct sockaddr *>(&server_addr), sizeof(server_addr)) < 0) {
         close_socket();
         throw std::runtime_error("Failed to connect to " + host + ":" + std::to_string(port));
     }
 
-    connected = true;
     Logger::i(TAG, "Device [" + config.name + "] connected successfully");
-
-    // 启动监听线程
-    listen_thread = std::thread(&Device::listening_loop, this);
 }
 
 void Device::disconnect() {
@@ -148,23 +143,29 @@ bool Device::is_connected() const {
     return connected && socket_fd != INVALID_SOCKET;
 }
 
-void Device::check_connection() {
+void Device::start_listening() {
+    connected = true;
+    // 启动监听线程
+    listen_thread = std::thread(&Device::listening_loop, this);
+}
+
+void Device::check_connection() const {
     if (!is_connected()) {
         throw std::runtime_error("Device [" + config.name + "] not connected");
     }
 }
 
-ssize_t Device::socket_send(const uint8_t* data, size_t len) {
+ssize_t Device::socket_send(const uint8_t *data, size_t len) const {
 #ifdef _WIN32
-    return ::send(socket_fd, reinterpret_cast<const char*>(data), static_cast<int>(len), 0);
+    return ::send(socket_fd, reinterpret_cast<const char *>(data), static_cast<int>(len), 0);
 #else
     return ::send(socket_fd, data, len, 0);
 #endif
 }
 
-ssize_t Device::socket_recv(uint8_t* buffer, size_t len) {
+ssize_t Device::socket_recv(uint8_t *buffer, size_t len) const {
 #ifdef _WIN32
-    return ::recv(socket_fd, reinterpret_cast<char*>(buffer), static_cast<int>(len), 0);
+    return ::recv(socket_fd, reinterpret_cast<char *>(buffer), static_cast<int>(len), 0);
 #else
     return ::recv(socket_fd, buffer, len, 0);
 #endif
@@ -175,8 +176,9 @@ void Device::listening_loop() {
     buffer.resize(2048);
 
     try {
+        size_t offset = 0;
         while (connected) {
-            ssize_t bytes_read = socket_recv(buffer.data(), buffer.size());
+            const ssize_t bytes_read = socket_recv(buffer.data() + offset, buffer.size() - offset);
 
             if (bytes_read <= 0) {
                 // 连接断开或出错
@@ -189,22 +191,27 @@ void Device::listening_loop() {
             }
 
             // 解析消息
-            size_t offset = 0;
-            while (offset < static_cast<size_t>(bytes_read)) {
+            size_t read_offset = 0;
+            while (read_offset < offset + bytes_read) {
                 size_t bytes_consumed = 0;
-                auto msg_opt = Message::parse(buffer.data() + offset, bytes_read - offset, bytes_consumed);
 
-                if (msg_opt) {
+                if (auto msg_opt = Message::parse(buffer.data() + offset, bytes_read + offset - read_offset, bytes_consumed)) {
                     handle_received_message(*msg_opt);
                     offset += bytes_consumed;
                 } else {
-                    // 无法解析消息，可能需要更多数据
-                    // TODO: 实现缓冲区拼接逻辑
                     break;
                 }
             }
+
+            if (read_offset < offset + bytes_read) {
+                size_t&& remaining = offset + bytes_read - read_offset;
+                memcpy(buffer.data(), buffer.data() + read_offset, read_offset);
+                offset = remaining;
+            }else {
+                offset = 0;
+            }
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         Logger::e(TAG, "Exception in listening loop: " + std::string(e.what()));
         std::lock_guard<std::mutex> lock(callback_mutex);
         if (error_callback) {
@@ -218,25 +225,25 @@ void Device::listening_loop() {
     }
 }
 
-void Device::handle_received_message(const Message& msg) {
+void Device::handle_received_message(const Message &msg) {
     Logger::d(TAG, "Received message: magic=" + std::string(to_string(msg.magic)) +
                    " id=" + std::to_string(msg.id));
 
-    // 将消息加入队列
+    // 将消息加入链表
     {
-        std::lock_guard<std::mutex> lock(message_queue_mutex);
-        received_messages.push(msg);
+        std::lock_guard lock(message_queue_mutex);
+        received_messages.push_back(msg);
     }
     message_cv.notify_all();
 
     // 调用回调
-    std::lock_guard<std::mutex> lock(callback_mutex);
+    std::lock_guard lock(callback_mutex);
     if (message_callback) {
         message_callback(msg);
     }
 }
 
-void Device::send_message(const Message& msg) {
+void Device::send_message(const Message &msg) {
     check_connection();
 
     auto data = msg.serialize();
@@ -266,30 +273,13 @@ std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg
     std::unique_lock<std::mutex> lock(message_queue_mutex);
 
     while (true) {
-        // 检查队列中是否有匹配的消息
-        std::queue<Message> temp_queue;
-        std::optional<Message> result;
-
-        while (!received_messages.empty()) {
-            auto msg = received_messages.front();
-            received_messages.pop();
-
-            if (msg.magic == magic && msg.id == msg_id) {
-                result = msg;
-                break;
-            } else {
-                temp_queue.push(msg);
+        // 使用迭代器遍历链表，找到匹配的消息直接删除
+        for (auto it = received_messages.begin(); it != received_messages.end(); ++it) {
+            if (it->magic == magic && it->id == msg_id) {
+                Message result = *it;
+                received_messages.erase(it);  // O(1) 删除
+                return result;
             }
-        }
-
-        // 将未匹配的消息放回队列
-        while (!temp_queue.empty()) {
-            received_messages.push(temp_queue.front());
-            temp_queue.pop();
-        }
-
-        if (result) {
-            return result;
         }
 
         // 等待新消息或超时
@@ -301,7 +291,7 @@ std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg
     }
 }
 
-void Device::ecdh(const Crypto::X25519& key_pair) {
+void Device::ecdh(const Crypto::X25519 &key_pair) {
     check_connection();
 
     // 构建 ECDH 消息
@@ -321,7 +311,7 @@ void Device::ecdh(const Crypto::X25519& key_pair) {
     }
 
     // 解析响应
-    if (auto* byte_body = dynamic_cast<ByteArrayMessageBody*>(response->body.get())) {
+    if (auto *byte_body = dynamic_cast<ByteArrayMessageBody *>(response->body.get())) {
         if (byte_body->data.size() == 32) {
             // 加载服务器公钥并派生共享密钥
             auto server_public_key = Crypto::X25519::load_public_key_from_mem(byte_body->data);

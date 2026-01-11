@@ -112,11 +112,10 @@ std::optional<ProtocolMagic> ProtocolMagicHelper::match(
     size_t& offset
 ) {
     const auto& magic_map = get_magic_by_first_byte();
-    const size_t min_len = min_magic_length();
 
     // 滑动窗口：尝试每个可能的起始位置
     for (size_t start = 0; start < size; ++start) {
-        if (size - start < min_len) {
+        if (size - start < MIN_MAGIC_LENGTH) {
             break;
         }
 

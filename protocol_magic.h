@@ -84,3 +84,6 @@ inline std::vector<uint8_t> to_bytes(ProtocolMagic magic) {
 inline std::string_view to_string(ProtocolMagic magic) {
     return ProtocolMagicHelper::get_magic_string(magic);
 }
+
+const size_t MAX_MAGIC_LENGTH = ProtocolMagicHelper::max_magic_length();
+const size_t MIN_MAGIC_LENGTH = ProtocolMagicHelper::min_magic_length();

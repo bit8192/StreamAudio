@@ -82,7 +82,9 @@ struct Message {
      * 将消息序列化为字节流
      * @return 序列化后的字节数组
      */
-    std::vector<uint8_t> serialize() const;
+    [[nodiscard]] std::vector<uint8_t> serialize() const;
+
+    [[nodiscard]] std::string to_string() const;
 
     /**
      * 计算消息的 CRC16 校验码

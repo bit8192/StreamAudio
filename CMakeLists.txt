@@ -70,6 +70,8 @@ add_executable(StreamSound main.cpp
         device.cpp
         device.h
         platform/socket.h
+        tools/hextool.cpp
+        tools/hextool.h
 )
 
 # Debug

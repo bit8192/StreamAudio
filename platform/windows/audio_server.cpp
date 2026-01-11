@@ -59,14 +59,8 @@ void AudioServer::accept_connections() {
     }
 }
 
-AudioServer::~AudioServer() {
-    running = false;
-
+void AudioServer::close_socket() const {
     // Close server socket to unblock accept
     closesocket(server_socket);
-
-    // Wait for accept thread
-    if (accept_thread.joinable()) {
-        accept_thread.join();
-    }
 }
+

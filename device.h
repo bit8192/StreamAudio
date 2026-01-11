@@ -12,7 +12,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
-#include <queue>
+#include <list>
 #include <chrono>
 
 // 前向声明，避免循环依赖
@@ -38,7 +38,7 @@ public:
     // 连接管理
     void connect();
     void disconnect();
-    bool is_connected() const;
+    [[nodiscard]] bool is_connected() const;
     void start_listening();
 
     // ECDH 密钥交换
@@ -87,7 +87,7 @@ private:
     std::thread listen_thread;
     std::mutex message_queue_mutex;
     std::condition_variable message_cv;
-    std::queue<Message> received_messages;
+    std::list<Message> received_messages;
 
     // 回调函数
     MessageCallback message_callback;
@@ -98,9 +98,9 @@ private:
     static bool parse_address(const std::string& address, std::string& host, int& port);
     void listening_loop();
     void handle_received_message(const Message& msg);
-    void check_connection();
+    void check_connection() const;
 
-    ssize_t socket_send(const uint8_t* data, size_t len);
-    ssize_t socket_recv(uint8_t* buffer, size_t len);
+    ssize_t socket_send(const uint8_t* data, size_t len) const;
+    ssize_t socket_recv(uint8_t* buffer, size_t len) const;
     void close_socket();
 };

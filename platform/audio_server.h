@@ -86,6 +86,8 @@ public:
     ~AudioServer();
 private:
     void accept_device(socket_t socket, const sockaddr_storage &client_addr);
+
+    void close_socket() const;
 };
 
 
