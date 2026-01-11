@@ -9,11 +9,12 @@
 #include "logger.h"
 #include "platform/audio_server.h"
 #include "platform/audio.h"
-#include "platform/config.h"
+#include "config.h"
 #include "platform/tray_icon.h"
 #include "tools/crypto.h"
 #include "tools/string.h"
 #include "version.h"
+#include "winsock_guard.h"
 
 
 void WriteWaveHeader(std::ofstream &ofstream, const audio_info pwfx, uint32_t dataSize) {
@@ -54,56 +55,6 @@ void output_test(uint32_t times) {
     output.close();
 }
 
-void start_stream() {
-    auto config = Config::load();
-    auto audio = Audio();
-    auto server = AudioServer(config.port, audio.get_audio_info());
-    auto format = audio.get_audio_info();
-    std::cout << "port: " << config.port << std::endl;
-    std::cout << "sample rate: " << format.sample_rate << std::endl;
-    std::cout << "bit sample: " << format.bits << std::endl;
-    std::cout << "format: " << format.format << std::endl;
-    std::cout << "channel: " << format.channels << std::endl;
-    server.start();
-    bool running = true;
-    // std::thread capture_thread([&server, &audio, &running, &format]() {
-    //     while (running) {
-    //         if(!server.wait_client(std::chrono::milliseconds(1000))) continue;
-    //         std::cout << "client connected." << std::endl;
-    //
-    //         server.send_data(reinterpret_cast<const char *>(&format.sample_rate), 4);
-    //         server.send_data(reinterpret_cast<const char *>(&format.bits), 2);
-    //         server.send_data(reinterpret_cast<const char *>(&format.format), 2);
-    //         server.send_data(reinterpret_cast<const char *>(&format.channels), 2);
-    //
-    //         audio.capture([&server, &running](auto data, auto len) {
-    //             server.send_data(data, len);
-    //             return running;
-    //         });
-    //         std::cout << "client lost." << std::endl;
-    //     }
-    // });
-    while (running) {
-        std::string cmd;
-        std::getline(std::cin, cmd);
-        if (cmd.starts_with("quit")) break;
-        if (cmd.starts_with("pair")) {
-            const auto param = string::split(cmd, ' ');
-            if (param.size() != 3) {
-                std::printf("invalid param. usage: pair <code> <name>\n");
-                continue;
-            }
-            if (server.pair(param[1], param[2])) {
-                std::printf("pair failed.\n");
-            }else {
-                std::printf("pair success.\n");
-            }
-        }
-    }
-    running = false;
-    // capture_thread.join();
-}
-
 void test_crypto() {
     const Crypto::ED25519 signKeyPair = Crypto::ED25519::load_private_key_from_file("private_key.pem");
     // signKeyPair.write_private_key_to_file("private_key.pem");
@@ -113,6 +64,12 @@ void test_crypto() {
 constexpr char LOG_TAG[] = "Main";
 
 int main(int argc, char *argv[]) {
+#ifdef _WIN32
+    // Windows: RAII 管理 Winsock 生命周期
+    // 构造时初始化，析构时自动清理（无论正常退出还是异常退出）
+    WinsockGuard winsock_guard;
+#endif
+
     // 创建 Qt 应用
     QApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);

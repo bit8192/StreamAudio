@@ -1,0 +1,353 @@
+#include "device.h"
+#include "logger.h"
+#include "tools/base64.h"
+#include <stdexcept>
+
+#include "config.h"
+
+#ifdef _WIN32
+#pragma comment(lib, "ws2_32.lib")
+#endif
+
+constexpr const char* TAG = "Device";
+
+Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const long msg_wait_timeout)
+    : server_(std::move(server)),
+      config(std::move(config)),
+      msg_wait_timeout(msg_wait_timeout),
+      socket_fd(INVALID_SOCKET),
+      connected(false),
+      ecdh_completed(false),
+      message_id_counter(0),
+      queue_num_counter(0) {
+
+    // 加载公钥（如果配置中有）
+    if (!this->config.public_key.empty()) {
+        try {
+            auto key_data = Base64::decode(this->config.public_key);
+            public_key = std::make_shared<Crypto::ED25519>(Crypto::ED25519::load_public_key_from_mem(Base64::decode(config.public_key)));
+        } catch (const std::exception& e) {
+            Logger::w(TAG, "Failed to load public key: " + std::string(e.what()));
+        }
+    }
+
+    session_key.resize(32, 0);
+}
+
+Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, const long msg_wait_timeout)
+    : server_(std::move(server)),
+      config(DeviceConfig("", "", "")),
+      msg_wait_timeout(msg_wait_timeout),
+      socket_fd(socket_fd),
+      connected(true),
+      ecdh_completed(false),
+      message_id_counter(0),
+      queue_num_counter(0)
+{
+    session_key.resize(32, 0);
+
+    // 启动监听线程
+    listen_thread = std::thread(&Device::listening_loop, this);
+}
+
+Device::~Device() {
+    disconnect();
+}
+
+bool Device::parse_address(const std::string& address, std::string& host, int& port) {
+    if (address.empty()) return false;
+    auto colon_pos = address.find(':');
+    if (colon_pos == std::string::npos) {
+        host = address;
+        port = STREAMSOUND_CONFIG_DEFAULT_PORT; // 默认端口
+    } else {
+        host = address.substr(0, colon_pos);
+        try {
+            port = std::stoi(address.substr(colon_pos + 1));
+        } catch (...) {
+            Logger::w(TAG, "invalid device port: " + address);
+            port = STREAMSOUND_CONFIG_DEFAULT_PORT;
+        }
+    }
+    return true;
+}
+
+void Device::connect() {
+    if (connected) {
+        Logger::w(TAG, "Device [" + config.name + "] already connected, disconnecting first");
+        disconnect();
+    }
+
+    std::string host;
+    int port;
+    parse_address(config.address, host, port);
+
+    Logger::i(TAG, "Connecting to " + host + ":" + std::to_string(port));
+
+    // 创建 socket
+    socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == INVALID_SOCKET) {
+        throw std::runtime_error("Failed to create socket");
+    }
+
+    // 设置地址
+    struct sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(static_cast<uint16_t>(port));
+
+#ifdef _WIN32
+    server_addr.sin_addr.s_addr = inet_addr(host.c_str());
+#else
+    if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0) {
+        close_socket();
+        throw std::runtime_error("Invalid address: " + host);
+    }
+#endif
+
+    // 连接
+    if (::connect(socket_fd, reinterpret_cast<struct sockaddr*>(&server_addr), sizeof(server_addr)) < 0) {
+        close_socket();
+        throw std::runtime_error("Failed to connect to " + host + ":" + std::to_string(port));
+    }
+
+    connected = true;
+    Logger::i(TAG, "Device [" + config.name + "] connected successfully");
+
+    // 启动监听线程
+    listen_thread = std::thread(&Device::listening_loop, this);
+}
+
+void Device::disconnect() {
+    if (!connected) {
+        return;
+    }
+
+    connected = false;
+    close_socket();
+
+    // 等待监听线程结束
+    if (listen_thread.joinable()) {
+        listen_thread.join();
+    }
+
+    Logger::d(TAG, "Device [" + config.name + "] disconnected");
+}
+
+void Device::close_socket() {
+    if (socket_fd != INVALID_SOCKET) {
+#ifdef _WIN32
+        closesocket(socket_fd);
+#else
+        ::close(socket_fd);
+#endif
+        socket_fd = INVALID_SOCKET;
+    }
+}
+
+bool Device::is_connected() const {
+    return connected && socket_fd != INVALID_SOCKET;
+}
+
+void Device::check_connection() {
+    if (!is_connected()) {
+        throw std::runtime_error("Device [" + config.name + "] not connected");
+    }
+}
+
+ssize_t Device::socket_send(const uint8_t* data, size_t len) {
+#ifdef _WIN32
+    return ::send(socket_fd, reinterpret_cast<const char*>(data), static_cast<int>(len), 0);
+#else
+    return ::send(socket_fd, data, len, 0);
+#endif
+}
+
+ssize_t Device::socket_recv(uint8_t* buffer, size_t len) {
+#ifdef _WIN32
+    return ::recv(socket_fd, reinterpret_cast<char*>(buffer), static_cast<int>(len), 0);
+#else
+    return ::recv(socket_fd, buffer, len, 0);
+#endif
+}
+
+void Device::listening_loop() {
+    std::vector<uint8_t> buffer;
+    buffer.resize(2048);
+
+    try {
+        while (connected) {
+            ssize_t bytes_read = socket_recv(buffer.data(), buffer.size());
+
+            if (bytes_read <= 0) {
+                // 连接断开或出错
+                if (bytes_read < 0) {
+                    Logger::e(TAG, "Socket read error for device [" + config.name + "]");
+                } else {
+                    Logger::i(TAG, "Connection closed for device [" + config.name + "]");
+                }
+                break;
+            }
+
+            // 解析消息
+            size_t offset = 0;
+            while (offset < static_cast<size_t>(bytes_read)) {
+                size_t bytes_consumed = 0;
+                auto msg_opt = Message::parse(buffer.data() + offset, bytes_read - offset, bytes_consumed);
+
+                if (msg_opt) {
+                    handle_received_message(*msg_opt);
+                    offset += bytes_consumed;
+                } else {
+                    // 无法解析消息，可能需要更多数据
+                    // TODO: 实现缓冲区拼接逻辑
+                    break;
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        Logger::e(TAG, "Exception in listening loop: " + std::string(e.what()));
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        if (error_callback) {
+            error_callback(e.what());
+        }
+    }
+
+    // 监听结束，断开连接
+    if (connected) {
+        disconnect();
+    }
+}
+
+void Device::handle_received_message(const Message& msg) {
+    Logger::d(TAG, "Received message: magic=" + std::string(to_string(msg.magic)) +
+                   " id=" + std::to_string(msg.id));
+
+    // 将消息加入队列
+    {
+        std::lock_guard<std::mutex> lock(message_queue_mutex);
+        received_messages.push(msg);
+    }
+    message_cv.notify_all();
+
+    // 调用回调
+    std::lock_guard<std::mutex> lock(callback_mutex);
+    if (message_callback) {
+        message_callback(msg);
+    }
+}
+
+void Device::send_message(const Message& msg) {
+    check_connection();
+
+    auto data = msg.serialize();
+    ssize_t sent = socket_send(data.data(), data.size());
+
+    if (sent < 0 || static_cast<size_t>(sent) != data.size()) {
+        throw std::runtime_error("Failed to send message");
+    }
+
+    Logger::d(TAG, "Sent message: magic=" + std::string(to_string(msg.magic)) +
+                   " id=" + std::to_string(msg.id));
+}
+
+void Device::set_message_callback(MessageCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex);
+    message_callback = std::move(callback);
+}
+
+void Device::set_error_callback(ErrorCallback callback) {
+    std::lock_guard<std::mutex> lock(callback_mutex);
+    error_callback = std::move(callback);
+}
+
+std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg_id, long timeout_ms) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+
+    std::unique_lock<std::mutex> lock(message_queue_mutex);
+
+    while (true) {
+        // 检查队列中是否有匹配的消息
+        std::queue<Message> temp_queue;
+        std::optional<Message> result;
+
+        while (!received_messages.empty()) {
+            auto msg = received_messages.front();
+            received_messages.pop();
+
+            if (msg.magic == magic && msg.id == msg_id) {
+                result = msg;
+                break;
+            } else {
+                temp_queue.push(msg);
+            }
+        }
+
+        // 将未匹配的消息放回队列
+        while (!temp_queue.empty()) {
+            received_messages.push(temp_queue.front());
+            temp_queue.pop();
+        }
+
+        if (result) {
+            return result;
+        }
+
+        // 等待新消息或超时
+        if (message_cv.wait_until(lock, deadline) == std::cv_status::timeout) {
+            Logger::w(TAG, "Timeout waiting for message: magic=" + std::string(to_string(magic)) +
+                           " id=" + std::to_string(msg_id));
+            return std::nullopt;
+        }
+    }
+}
+
+void Device::ecdh(const Crypto::X25519& key_pair) {
+    check_connection();
+
+    // 构建 ECDH 消息
+    int32_t msg_id = get_next_message_id();
+    auto public_key_bytes = key_pair.export_public_key();
+
+    auto body = std::make_shared<ByteArrayMessageBody>(public_key_bytes);
+    auto msg = Message::build(ProtocolMagic::ECDH, get_next_queue_num(), msg_id, body);
+
+    // 发送消息
+    send_message(msg);
+
+    // 等待响应
+    auto response = wait_for_message(ProtocolMagic::ECDH_RESPONSE, msg_id, msg_wait_timeout);
+    if (!response) {
+        throw std::runtime_error("Device [" + config.name + "] ECDH: no response received");
+    }
+
+    // 解析响应
+    if (auto* byte_body = dynamic_cast<ByteArrayMessageBody*>(response->body.get())) {
+        if (byte_body->data.size() == 32) {
+            // 加载服务器公钥并派生共享密钥
+            auto server_public_key = Crypto::X25519::load_public_key_from_mem(byte_body->data);
+            std::vector<uint8_t> salt; // 空盐值
+            auto shared_secret = key_pair.derive_shared_secret(server_public_key, salt);
+
+            // 复制到会话密钥
+            if (shared_secret.size() >= 32) {
+                std::copy(shared_secret.begin(), shared_secret.begin() + 32, session_key.begin());
+                ecdh_completed = true;
+                Logger::d(TAG, "Device [" + config.name + "] ECDH success");
+            } else {
+                throw std::runtime_error("Derived shared secret too short");
+            }
+        } else {
+            throw std::runtime_error("Invalid ECDH response: incorrect key size");
+        }
+    } else {
+        throw std::runtime_error("Invalid ECDH response: wrong body type");
+    }
+}
+
+int32_t Device::get_next_message_id() {
+    return message_id_counter.fetch_add(1);
+}
+
+int32_t Device::get_next_queue_num() {
+    return queue_num_counter.fetch_add(1);
+}

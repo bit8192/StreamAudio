@@ -4,6 +4,7 @@
 
 #include "../../logger.h"
 #include "../audio_server.h"
+#include "../../device.h"
 #include "../../exceptions.h"
 
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
@@ -11,7 +12,6 @@ constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
 AudioServer::AudioServer(const int port, const struct audio_info& audio_info) : port(port),
                                                                                sign_key_pair(Crypto::ED25519::empty()),
                                                                                audio_info(audio_info) {
-    init_client_key();
     // 1. 创建socket文件描述符
     server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server_socket < 0) throw SocketException("无法创建socket");
@@ -48,42 +48,10 @@ void AudioServer::accept_connections() {
             continue;
         }
 
-        {
-            std::lock_guard lock(clients_mutex);
-            auto& client = clients.emplace_back();
-            client.address = client_addr;
-            client.socket_fd = client_socket;
-            client.active_time = std::chrono::high_resolution_clock::now();
-            client.connected = true;
-
-            // Start receive thread for this client
-            client.recv_thread = std::thread(&AudioServer::receive_data, this, std::ref(client));
-        }
+        accept_device(client_socket, client_addr);
 
         Logger::i(AUDIO_SERVER_LOGTAG, "New client connected");
     }
-}
-
-void AudioServer::receive_data(client_info& client) {
-    char buffer[PACKAGE_SIZE];
-    while (running && client.connected) {
-        const auto len = recv(client.socket_fd, buffer, PACKAGE_SIZE, 0);
-        if (len <= 0) {
-            if (len == 0) {
-                Logger::i(AUDIO_SERVER_LOGTAG, "Client disconnected");
-            } else {
-                Logger::e(AUDIO_SERVER_LOGTAG, "receive data failed. errno=" + std::to_string(errno));
-            }
-            client.connected = false;
-            break;
-        }
-        try {
-            handle_message(client.address, reinterpret_cast<const uint8_t *>(buffer), len, client);
-        } catch (const std::exception &e) {
-            Logger::e(AUDIO_SERVER_LOGTAG, "handle message failed.", e);
-        }
-    }
-    close(client.socket_fd);
 }
 
 AudioServer::~AudioServer() {
@@ -95,18 +63,5 @@ AudioServer::~AudioServer() {
     // Wait for accept thread
     if (accept_thread.joinable()) {
         accept_thread.join();
-    }
-
-    // Close all client connections and wait for threads
-    {
-        std::lock_guard lock(clients_mutex);
-        for (auto& client : clients) {
-            client.connected = false;
-            close(client.socket_fd);
-            if (client.recv_thread.joinable()) {
-                client.recv_thread.join();
-            }
-        }
-        clients.clear();
     }
 }

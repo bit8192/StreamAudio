@@ -41,8 +41,8 @@ add_executable(StreamSound main.cpp
         logger.cpp
         logger.h
         platform/audio_server_common.cpp
-        platform/${PLATFORM}/config.cpp
-        platform/config.h
+        config.cpp
+        config.h
         platform/tray_icon.cpp
         platform/tray_icon.h
         platform/qrcode_dialog.cpp
@@ -62,6 +62,14 @@ add_executable(StreamSound main.cpp
         data_operator.h
         data_pack.cpp
         data_pack.h
+        protocol_magic.cpp
+        protocol_magic.h
+        message.cpp
+        message.h
+        device_config.h
+        device.cpp
+        device.h
+        platform/socket.h
 )
 
 # Debug
@@ -72,6 +80,10 @@ endif()
 # Openssl
 find_package(OpenSSL REQUIRED)
 list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+
+# yaml-cpp
+find_package(yaml-cpp REQUIRED)
+list(APPEND STREAM_SOUND_LINK_LIBRARIES yaml-cpp::yaml-cpp)
 
 # Qt
 find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)

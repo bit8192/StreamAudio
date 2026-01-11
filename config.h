@@ -9,8 +9,11 @@
 #include <string>
 #include <filesystem>
 
+const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
+#define STREAMSOUND_CONFIG_DEFAULT_PORT 8910
+
 struct ServerConfig {
-    uint16_t port = 8910;  // 默认端口
+    uint16_t port = STREAMSOUND_CONFIG_DEFAULT_PORT;  // 默认端口
 };
 
 class Config {
