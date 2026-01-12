@@ -110,6 +110,8 @@ void Device::connect() {
     }
 
     Logger::i(TAG, "Device [" + config.name + "] connected successfully");
+
+    start_listening();
 }
 
 void Device::disconnect() {
