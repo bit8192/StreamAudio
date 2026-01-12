@@ -5,12 +5,10 @@
 #ifndef STREAMSOUND_AUDIO_H
 #define STREAMSOUND_AUDIO_H
 
-#include <istream>
 #ifdef _WIN32
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
-#include <functiondiscoverykeys.h>
 #else
 #include <pulse/simple.h>
 #endif

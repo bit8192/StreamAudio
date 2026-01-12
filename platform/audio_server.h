@@ -64,9 +64,13 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     socket_t server_socket;
     std::vector<std::unique_ptr<Device>> devices_;
     std::mutex devices_mutex; // Protect clients vector
+    std::condition_variable cleanup_cv; // 通知清理线程
     bool running = false;
+    std::atomic<bool> destructing{false}; // 标记是否正在析构
     std::thread accept_thread; // Thread for accepting new connections
+    std::thread cleanup_thread; // Thread for cleaning up disconnected devices
     void accept_connections(); // Accept new TCP connections
+    void cleanup_disconnected_devices(); // Clean up disconnected devices without public key
 
 
 public:
@@ -82,6 +86,15 @@ public:
 
     // 获取端口
     [[nodiscard]] int get_port() const;
+
+    // 通知清理线程检查设备
+    void notify_device_disconnected();
+
+    // 交换密钥，生成公共密钥
+    std::vector<uint8_t> ecdh_key(std::vector<uint8_t> key);
+
+    // 获取ecdh公钥
+    std::vector<uint8_t> get_ecdh_pub_key_data() const;
 
     ~AudioServer();
 private:

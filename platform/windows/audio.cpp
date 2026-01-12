@@ -12,9 +12,7 @@ const IID IID_IAudioClient = __uuidof(IAudioClient);
 const IID IID_IAudioCaptureClient = __uuidof(IAudioCaptureClient);
 
 Audio::Audio() {
-    hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(hr)) throw AudioException("core initialize failed.");
-
+    // COM 初始化由 Qt 应用负责，不在此处重复初始化
     hr = CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void**)&pEnumerator);
     if (FAILED(hr)) throw AudioException("create core instance failed.");
 
@@ -137,5 +135,5 @@ Audio::~Audio() {
     if (pDevice) pDevice->Release();
     if (pEnumerator) pEnumerator->Release();
     if (pwfx) CoTaskMemFree(pwfx);
-    CoUninitialize();
+    // COM 反初始化由 Qt 应用负责
 }

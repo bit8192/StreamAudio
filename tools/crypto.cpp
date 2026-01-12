@@ -164,7 +164,6 @@ Crypto::X25519 Crypto::X25519::load_public_key_from_mem(const std::vector<uint8_
 }
 
 std::vector<uint8_t> Crypto::KeyPair::export_public_key() const {
-    if (!is_public) throw CryptoException("this is not a public key");
     size_t len = 32;
     std::vector<uint8_t> pubkey(len, 0);
     EVP_PKEY_get_raw_public_key(key, pubkey.data(), &len);

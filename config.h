@@ -9,7 +9,12 @@
 #include <string>
 #include <filesystem>
 
+#ifdef _WIN32
+const auto HOME_DIR = std::filesystem::path(std::getenv("USERPROFILE"));
+#else
 const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
+#endif
+
 #define STREAMSOUND_CONFIG_DEFAULT_PORT 8910
 
 struct ServerConfig {

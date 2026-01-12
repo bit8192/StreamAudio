@@ -103,4 +103,5 @@ private:
     ssize_t socket_send(const uint8_t* data, size_t len) const;
     ssize_t socket_recv(uint8_t* buffer, size_t len) const;
     void close_socket();
+    void close_connection(); // 内部方法：停止连接但不等待线程
 };

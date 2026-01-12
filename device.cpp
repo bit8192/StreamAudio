@@ -4,6 +4,8 @@
 #include <stdexcept>
 
 #include "config.h"
+#include "platform/audio_server.h"
+#include "tools/hextool.h"
 
 #ifdef _WIN32
 #pragma comment(lib, "ws2_32.lib")
@@ -44,9 +46,6 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
       message_id_counter(0),
       queue_num_counter(0) {
     session_key.resize(32, 0);
-
-    // 启动监听线程
-    listen_thread = std::thread(&Device::listening_loop, this);
 }
 
 Device::~Device() {
@@ -114,15 +113,23 @@ void Device::connect() {
     start_listening();
 }
 
+void Device::close_connection() {
+    // 只停止连接，不等待线程（用于从 listening_loop 内部调用）
+    if (connected) {
+        connected = false;
+        close_socket();
+
+        // 通知 AudioServer 检查并清理设备
+        server_->notify_device_disconnected();
+    }
+}
+
 void Device::disconnect() {
-    if (!connected) {
-        return;
+    if (connected) {
+        close_connection();
     }
 
-    connected = false;
-    close_socket();
-
-    // 等待监听线程结束
+    // 等待监听线程结束（只有在外部调用时才 join）
     if (listen_thread.joinable()) {
         listen_thread.join();
     }
@@ -201,6 +208,7 @@ void Device::listening_loop() {
                     handle_received_message(*msg_opt);
                     offset += bytes_consumed;
                 } else {
+                    Logger::d(TAG, "invalid message: {}", HEX_TOOL::to_hex(buffer.data() + offset, bytes_read + offset - read_offset));
                     break;
                 }
             }
@@ -221,27 +229,53 @@ void Device::listening_loop() {
         }
     }
 
-    // 监听结束，断开连接
-    if (connected) {
-        disconnect();
-    }
+    // 监听结束，关闭连接（不 join 自己）
+    close_connection();
+
+    Logger::d(TAG, "Device [" + config.name + "] listening loop ended");
 }
 
 void Device::handle_received_message(const Message &msg) {
     Logger::d(TAG, "Received message: magic=" + std::string(to_string(msg.magic)) +
                    " id=" + std::to_string(msg.id));
 
-    // 将消息加入链表
-    {
-        std::lock_guard lock(message_queue_mutex);
-        received_messages.push_back(msg);
-    }
-    message_cv.notify_all();
+    switch (msg.magic) {
+        case ProtocolMagic::ECDH: {
+            // 处理客户端的 ECDH 请求
+            if (auto *byte_body = dynamic_cast<ByteArrayMessageBody *>(msg.body.get())) {
+                // 使用客户端公钥派生会话密钥
+                auto derived_key = server_->ecdh_key(byte_body->data);
 
-    // 调用回调
-    std::lock_guard lock(callback_mutex);
-    if (message_callback) {
-        message_callback(msg);
+                // 保存会话密钥
+                if (derived_key.size() >= 32) {
+                    std::copy(derived_key.begin(), derived_key.begin() + 32, session_key.begin());
+                    ecdh_completed = true;
+                    Logger::d(TAG, "Device [{}] ECDH completed (server side) sessionKey={}",config.name, HEX_TOOL::to_hex(session_key.data(), session_key.size()));
+                } else {
+                    Logger::e(TAG, "Derived shared secret too short");
+                }
+
+                // 返回服务器的公钥
+                const auto body = std::make_shared<ByteArrayMessageBody>(server_->get_ecdh_pub_key_data());
+                send_message(Message::build(ProtocolMagic::ECDH_RESPONSE, queue_num_counter.fetch_add(1), msg.id, body));
+            }
+            break;
+        }
+        default: {
+            // 将消息加入链表
+            {
+                std::lock_guard lock(message_queue_mutex);
+                received_messages.push_back(msg);
+            }
+            message_cv.notify_all();
+
+            // 调用回调
+            std::lock_guard lock(callback_mutex);
+            if (message_callback) {
+                message_callback(msg);
+            }
+            break;
+        }
     }
 }
 
@@ -256,7 +290,7 @@ void Device::send_message(const Message &msg) {
     }
 
     Logger::d(TAG, "Sent message: magic=" + std::string(to_string(msg.magic)) +
-                   " id=" + std::to_string(msg.id));
+                   " id=" + std::to_string(msg.id) + "\tdata=" + HEX_TOOL::to_hex(data.data(), data.size()));
 }
 
 void Device::set_message_callback(MessageCallback callback) {

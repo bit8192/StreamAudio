@@ -3,6 +3,7 @@
 //
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 
 #include "audio_server.h"
 #include "../logger.h"
@@ -18,19 +19,31 @@ const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
 AudioServer::~AudioServer() {
     running = false;
+    destructing = true; // 标记正在析构
 
+    // 通知清理线程退出
+    cleanup_cv.notify_all();
+
+    // 复制设备列表，避免在持有锁时调用 disconnect()
+    std::vector<std::unique_ptr<Device>> devices_to_cleanup;
     {
         std::lock_guard lock(devices_mutex);
-        for (const auto& device : devices_) {
-            device->disconnect();
-        }
+        devices_to_cleanup = std::move(devices_);
+    }
+
+    // 在锁外断开所有设备
+    for (const auto& device : devices_to_cleanup) {
+        device->disconnect();
     }
 
     close_socket();
 
-    // Wait for accept thread
+    // Wait for threads
     if (accept_thread.joinable()) {
         accept_thread.join();
+    }
+    if (cleanup_thread.joinable()) {
+        cleanup_thread.join();
     }
 }
 
@@ -79,10 +92,13 @@ void AudioServer::accept_device(socket_t socket, const sockaddr_storage& client_
 void AudioServer::start() {
     if (running) {
         running = false;
+        cleanup_cv.notify_all();
         if (accept_thread.joinable()) accept_thread.join();
+        if (cleanup_thread.joinable()) cleanup_thread.join();
     }
     running = true;
     accept_thread = std::thread(&AudioServer::accept_connections, this);
+    cleanup_thread = std::thread(&AudioServer::cleanup_disconnected_devices, this);
 }
 
 std::string AudioServer::generate_pair_code() {
@@ -108,4 +124,63 @@ std::string AudioServer::get_pair_code() const {
 
 int AudioServer::get_port() const {
     return port;
+}
+
+void AudioServer::notify_device_disconnected() {
+    cleanup_cv.notify_one();
+}
+
+std::vector<uint8_t> AudioServer::ecdh_key(std::vector<uint8_t> key) {
+    // 加载客户端公钥
+    auto client_public_key = Crypto::X25519::load_public_key_from_mem(key);
+    // 使用服务器私钥和客户端公钥派生共享密钥
+    std::vector<uint8_t> salt; // 空盐值
+    return ecdh_key_pair.derive_shared_secret(client_public_key, salt);
+}
+
+std::vector<uint8_t> AudioServer::get_ecdh_pub_key_data() const {
+    return ecdh_key_pair.export_public_key();
+}
+
+void AudioServer::cleanup_disconnected_devices() {
+    while (running) {
+        std::unique_lock lock(devices_mutex);
+
+        // 等待通知或超时（每10秒检查一次）
+        cleanup_cv.wait_for(lock, std::chrono::seconds(10), [this] {
+            return !running || destructing;
+        });
+
+        // ReSharper disable once CppDFAConstantConditions
+        if (!running || destructing) {
+            break;
+        }
+
+        // 收集需要清理的设备
+        std::vector<Device*> devices_to_cleanup;
+        for (const auto& device : devices_) {
+            if (!device->is_connected() && device->get_config().public_key.empty()) {
+                devices_to_cleanup.push_back(device.get());
+            }
+        }
+
+        // // 释放锁后 disconnect
+        // lock.unlock();
+        // for (auto* device : devices_to_cleanup) {
+        //     Logger::d(LOG_TAG, "Cleaning up disconnected device without public key: " + device->get_config().name);
+        //     device->disconnect();
+        // }
+        //
+        // // 重新获取锁，从列表中删除
+        // lock.lock();
+        devices_.erase(
+            std::remove_if(devices_.begin(), devices_.end(),
+                [&devices_to_cleanup](const std::unique_ptr<Device>& d) {
+                    return std::find(devices_to_cleanup.begin(), devices_to_cleanup.end(), d.get()) != devices_to_cleanup.end();
+                }),
+            devices_.end()
+        );
+    }
+
+    Logger::d(LOG_TAG, "Cleanup thread exiting");
 }
