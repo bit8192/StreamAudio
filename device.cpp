@@ -110,11 +110,9 @@ void Device::connect() {
         throw std::runtime_error("Failed to connect to " + host + ":" + std::to_string(port));
     }
 
-    connected = true;
     Logger::i(TAG, "Device [" + config.name + "] connected successfully");
 
-    // 启动监听线程
-    listen_thread = std::thread(&Device::listening_loop, this);
+    start_listening();
 }
 
 void Device::disconnect() {
@@ -146,6 +144,13 @@ void Device::close_socket() {
 
 bool Device::is_connected() const {
     return connected && socket_fd != INVALID_SOCKET;
+}
+
+void Device::start_listening()
+{
+    // 启动监听线程
+    connected = true;
+    listen_thread = std::thread(&Device::listening_loop, this);
 }
 
 void Device::check_connection() {

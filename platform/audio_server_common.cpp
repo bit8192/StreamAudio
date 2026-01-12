@@ -55,7 +55,7 @@ void AudioServer::accept_device(socket_t socket, const sockaddr_storage& client_
         shared_from_this(),
         socket
     ));
-    device.start
+    device->start_listening();
 }
 
 void AudioServer::start() {
