@@ -62,9 +62,37 @@ void test_crypto() {
     signKeyPair.write_public_key_to_file("public_key1.pem");
 }
 
+void aes_test()
+{
+    const auto iv_value = "iv";
+    const auto key_value = "key";
+    std::vector<uint8_t> key(32);
+    const auto iv = std::vector<uint8_t>(iv_value, iv_value + 2);
+    const auto key = Crypto::sha256(std::vector<uint8_t>(key_value, key_value + 3));
+
+    const std::string plain_text = "Hello, StreamSound! This is a test message for AES-256-GCM encryption and decryption.";
+    std::vector<uint8_t> plain_data(plain_text.begin(), plain_text.end());
+
+    auto cipher_data = Crypto::AES256GCM::encrypt(plain_data.data(), plain_data.size(), key);
+    auto decrypted_data = Crypto::AES256GCM::decrypt(cipher_data.data(), cipher_data.size(), key);
+
+    std::string decrypted_text(decrypted_data.begin(), decrypted_data.end());
+
+    std::cout << "Original Text: " << plain_text << std::endl;
+    std::cout << "Decrypted Text: " << decrypted_text << std::endl;
+
+    if (plain_text == decrypted_text) {
+        std::cout << "AES-256-GCM encryption and decryption successful!" << std::endl;
+    } else {
+        std::cout << "AES-256-GCM encryption and decryption failed!" << std::endl;
+    }
+}
+
 constexpr char LOG_TAG[] = "Main";
 
 int main(int argc, char *argv[]) {
+    aes_test();
+    return 0;
 #ifdef _WIN32
     // Windows: RAII 管理 Winsock 生命周期
     // 构造时初始化，析构时自动清理（无论正常退出还是异常退出）

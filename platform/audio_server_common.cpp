@@ -51,7 +51,7 @@ AudioServer::~AudioServer() {
 std::vector<uint8_t> decrypt(const std::vector<uint8_t> &data, const std::vector<uint8_t> &key) {
     const std::vector iv(data.data(), data.data() + 16);
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), iv.data());
+    EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data());
 
     const std::vector cipher_data(data.data() + 16, data.data() + data.size() - 16);
     int len;
@@ -68,7 +68,7 @@ std::vector<uint8_t> encrypt(const uint8_t* data, const size_t len, const std::v
     std::vector<uint8_t> cipher_data(len + 16 + 16);
     RAND_bytes(cipher_data.data(), 16);
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(), cipher_data.data());
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), cipher_data.data());
 
     int out_len;
     EVP_EncryptUpdate(ctx, cipher_data.data() + 16, &out_len, data, len);
