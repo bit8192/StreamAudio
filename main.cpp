@@ -1,9 +1,5 @@
-#include <cmath>
-#include <iostream>
-#include <ctime>
 #include <fstream>
 #include <thread>
-#include <openssl/rand.h>
 #include <QApplication>
 
 #include "logger.h"
@@ -12,87 +8,11 @@
 #include "config.h"
 #include "exceptions.h"
 #include "platform/tray_icon.h"
-#include "tools/crypto.h"
-#include "tools/string.h"
 #include "version.h"
 #include "winsock_guard.h"
 
-
-void WriteWaveHeader(std::ofstream &ofstream, const audio_info pwfx, uint32_t dataSize) {
-    WAVEFILEHEADER header;
-
-    header.audioFormat = pwfx.format;
-    header.numChannels = pwfx.channels;
-    header.sampleRate = pwfx.sample_rate;
-    header.bitsPerSample = pwfx.bits;
-    header.blockAlign = pwfx.channels * pwfx.bits / 8;
-    header.byteRate = header.sampleRate * header.blockAlign;
-    header.dataSize = dataSize;
-    header.riffSize = dataSize + sizeof(header) - 8;
-
-    ofstream.write(reinterpret_cast<const char *>(&header), sizeof(header));
-}
-
-void output_test(uint32_t times) {
-    std::ofstream output("output.wav", std::ios::binary);
-    auto start = std::time(nullptr);
-    auto audio = Audio();
-
-    auto headerPos = output.tellp();
-    WriteWaveHeader(output, audio.get_audio_info(), 0);
-
-    size_t size = 0;
-    int i = 0;
-    audio.capture([&start, &output, &size, &i, &times](auto data, auto len) {
-        size += len;
-        output.write(data, len);
-        std::cout << i++ << ":\t" << len << std::endl;
-        return std::time(nullptr) - start < times;
-    });
-
-    output.seekp(headerPos);
-    WriteWaveHeader(output, audio.get_audio_info(), size);
-
-    output.close();
-}
-
-void test_crypto() {
-    const Crypto::ED25519 signKeyPair = Crypto::ED25519::load_private_key_from_file("private_key.pem");
-    // signKeyPair.write_private_key_to_file("private_key.pem");
-    signKeyPair.write_public_key_to_file("public_key1.pem");
-}
-
-void aes_test()
-{
-    const auto iv_value = "iv";
-    const auto key_value = "key";
-    std::vector<uint8_t> key(32);
-    const auto iv = std::vector<uint8_t>(iv_value, iv_value + 2);
-    const auto key = Crypto::sha256(std::vector<uint8_t>(key_value, key_value + 3));
-
-    const std::string plain_text = "Hello, StreamSound! This is a test message for AES-256-GCM encryption and decryption.";
-    std::vector<uint8_t> plain_data(plain_text.begin(), plain_text.end());
-
-    auto cipher_data = Crypto::AES256GCM::encrypt(plain_data.data(), plain_data.size(), key);
-    auto decrypted_data = Crypto::AES256GCM::decrypt(cipher_data.data(), cipher_data.size(), key);
-
-    std::string decrypted_text(decrypted_data.begin(), decrypted_data.end());
-
-    std::cout << "Original Text: " << plain_text << std::endl;
-    std::cout << "Decrypted Text: " << decrypted_text << std::endl;
-
-    if (plain_text == decrypted_text) {
-        std::cout << "AES-256-GCM encryption and decryption successful!" << std::endl;
-    } else {
-        std::cout << "AES-256-GCM encryption and decryption failed!" << std::endl;
-    }
-}
-
 constexpr char LOG_TAG[] = "Main";
-
 int main(int argc, char *argv[]) {
-    aes_test();
-    return 0;
 #ifdef _WIN32
     // Windows: RAII 管理 Winsock 生命周期
     // 构造时初始化，析构时自动清理（无论正常退出还是异常退出）

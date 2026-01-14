@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "tools/base64.h"
 #include <stdexcept>
+#include <cstring>
 
 #include "config.h"
 #include "platform/audio_server.h"

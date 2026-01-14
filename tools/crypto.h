@@ -64,6 +64,33 @@ namespace Crypto {
 
     std::vector<uint8_t> hmac_sha256(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data);
     std::vector<uint8_t> sha256(const std::vector<uint8_t> &data);
+
+    /**
+     * AES-256-GCM 加密
+     * @param key 256位密钥（32字节）
+     * @param iv 初始化向量（任意长度，建议12字节）
+     * @param plaintext 明文数据
+     * @return 加密后的数据（密文 + 16字节认证标签）
+     */
+    std::vector<uint8_t> aes_256_gcm_encrypt(
+        const std::vector<uint8_t> &key,
+        const std::vector<uint8_t> &iv,
+        const std::vector<uint8_t> &plaintext
+    );
+
+    /**
+     * AES-256-GCM 解密
+     * @param key 256位密钥（32字节）
+     * @param iv 初始化向量（与加密时使用的相同）
+     * @param ciphertext 密文数据（包含16字节认证标签）
+     * @return 解密后的明文数据
+     * @throws CryptoException 如果认证标签验证失败
+     */
+    std::vector<uint8_t> aes_256_gcm_decrypt(
+        const std::vector<uint8_t> &key,
+        const std::vector<uint8_t> &iv,
+        const std::vector<uint8_t> &ciphertext
+    );
 }
 
 #endif //CRYPTO_H

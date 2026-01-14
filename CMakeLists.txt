@@ -23,20 +23,18 @@ configure_file(
 include_directories(${CMAKE_BINARY_DIR})
 
 if (WIN32)
-    set(PLATFORM "windows")
     set(STREAM_SOUND_LINK_LIBRARIES ws2_32)
     set(CMAKE_PREFIX_PATH "D:/msys64/mingw64")
 elseif (LINUX)
-    set(PLATFORM "linux")
     set(STREAM_SOUND_LINK_LIBRARIES pulse pulse-simple)
 endif ()
 
 add_executable(StreamSound main.cpp
-        platform/${PLATFORM}/audio.cpp
+        platform/${CMAKE_SYSTEM_NAME}/audio.cpp
         platform/audio.h
         exceptions.h
         exceptions.cpp
-        platform/${PLATFORM}/audio_server.cpp
+        platform/${CMAKE_SYSTEM_NAME}/audio_server.cpp
         platform/audio_server.h
         logger.cpp
         logger.h
@@ -47,7 +45,7 @@ add_executable(StreamSound main.cpp
         platform/tray_icon.h
         platform/qrcode_dialog.cpp
         platform/qrcode_dialog.h
-        platform/platform_utils_common.cpp
+        platform/platform_utils.cpp
         platform/platform_utils.h
         tools/crypto.cpp
         tools/crypto.h
@@ -57,7 +55,6 @@ add_executable(StreamSound main.cpp
         tools/string.h
         tools/qrcodegen.cpp
         tools/qrcodegen.h
-        platform/windows/platform_utils.cpp
         data_operator.cpp
         data_operator.h
         data_pack.cpp
@@ -139,3 +136,9 @@ endif ()
 
 # 拷贝png图标
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/icon.png" "$<TARGET_FILE_DIR:${PROJECT_NAME}>")
+
+# 测试选项
+option(BUILD_TESTS "Build test executables" OFF)
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
