@@ -23,6 +23,8 @@ enum class ProtocolMagic {
     PLAY_RESPONSE,
     STOP,
     STOP_RESPONSE,
+    ENCRYPTED,
+    ERROR
 };
 
 /**

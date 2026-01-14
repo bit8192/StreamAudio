@@ -241,6 +241,9 @@ void Device::handle_received_message(const Message &msg) {
                    " id=" + std::to_string(msg.id));
 
     switch (msg.magic) {
+        case ProtocolMagic::PAIR: {
+            //TODO 先实现消息的加解密
+        }
         case ProtocolMagic::ECDH: {
             // 处理客户端的 ECDH 请求
             if (auto *byte_body = dynamic_cast<ByteArrayMessageBody *>(msg.body.get())) {
@@ -353,7 +356,7 @@ void Device::ecdh(const Crypto::X25519 &key_pair) {
             // 加载服务器公钥并派生共享密钥
             auto server_public_key = Crypto::X25519::load_public_key_from_mem(byte_body->data);
             std::vector<uint8_t> salt; // 空盐值
-            auto shared_secret = key_pair.derive_shared_secret(server_public_key, salt);
+            auto shared_secret = key_pair.derive_shared_secret(server_public_key);
 
             // 复制到会话密钥
             if (shared_secret.size() >= 32) {

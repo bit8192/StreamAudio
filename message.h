@@ -48,11 +48,12 @@ struct Message {
     int32_t id;                                   // 消息 ID
     int32_t pack_length;                          // 包长度（body 的长度）
     std::shared_ptr<MessageBody> body;            // 消息体
+    std::vector<uint8_t> sign;                    // 签名
     uint16_t crc;                                 // CRC16 校验
 
     // 最小消息长度（不含 body）
-    // magic(变长) + version(4) + queue_num(4) + id(4) + pack_length(4) + crc(2)
-    static constexpr size_t MIN_LENGTH = 4 + 4 + 4 + 4 + 2; // 不含 magic
+    // magic(变长) + version(4) + queue_num(4) + id(4) + pack_length(4) + sign(64) + crc(2)
+    static constexpr size_t MIN_LENGTH = 4 + 4 + 4 + 4 + 64 + 2; // 不含 magic
 
     /**
      * 构建消息（简化构造函数）

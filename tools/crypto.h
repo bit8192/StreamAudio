@@ -58,8 +58,7 @@ namespace Crypto {
 
         static X25519 load_public_key_from_mem(const std::vector<uint8_t> &data);
 
-        [[nodiscard]] std::vector<uint8_t> derive_shared_secret(const X25519 &pub_key,
-                                                                const std::vector<uint8_t> &salt) const;
+        [[nodiscard]] std::vector<uint8_t> derive_shared_secret(const X25519 &pub_key) const;
     };
 
     std::vector<uint8_t> hmac_sha256(const std::vector<uint8_t> &key, const std::vector<uint8_t> &data);

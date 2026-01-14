@@ -244,7 +244,7 @@ bool Crypto::ED25519::verify(const uint8_t* ptr, const size_t size, const std::v
     return false;
 }
 
-std::vector<uint8_t> Crypto::X25519::derive_shared_secret(const X25519 &pub_key, const std::vector<uint8_t>& salt) const {
+std::vector<uint8_t> Crypto::X25519::derive_shared_secret(const X25519 &pub_key) const {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(key, nullptr);
     if (!ctx) handleErrors();
 
@@ -260,7 +260,7 @@ std::vector<uint8_t> Crypto::X25519::derive_shared_secret(const X25519 &pub_key,
 
     EVP_PKEY_CTX_free(ctx);
 
-    return hmac_derive_key(shared_secret, salt, derive_key_info);
+    return sha256(shared_secret);
 }
 
 // 计算 HMAC-SHA256
