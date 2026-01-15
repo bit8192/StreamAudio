@@ -14,9 +14,8 @@
 
 constexpr char LOG_TAG[] = "TrayIcon";
 
-TrayIcon::TrayIcon(const QString& icon_path, std::shared_ptr<AudioServer> server, QObject* parent)
+TrayIcon::TrayIcon(const QString &icon_path, std::shared_ptr<AudioServer> server, QObject *parent)
     : QObject(parent), server_(std::move(server)) {
-
     tray_icon_ = new QSystemTrayIcon(this);
 
     QIcon icon(icon_path);
@@ -53,18 +52,18 @@ void TrayIcon::create_menu() {
     context_menu_ = new QMenu();
 
     // 添加菜单项：配对二维码
-    QAction* pair_action = context_menu_->addAction("配对二维码");
+    QAction *pair_action = context_menu_->addAction("配对二维码");
     pair_action->setData("pair_qrcode");
 
     // 添加菜单项：关于
-    QAction* about_action = context_menu_->addAction("关于");
+    QAction *about_action = context_menu_->addAction("关于");
     about_action->setData("about");
 
     // 添加分隔线
     context_menu_->addSeparator();
 
     // 添加退出菜单项
-    QAction* quit_action = context_menu_->addAction("退出");
+    QAction *quit_action = context_menu_->addAction("退出");
     quit_action->setData("quit");
 
     // 连接菜单触发信号
@@ -89,13 +88,13 @@ void TrayIcon::hide() {
     }
 }
 
-void TrayIcon::set_tooltip(const QString& tooltip) {
+void TrayIcon::set_tooltip(const QString &tooltip) {
     if (tray_icon_) {
         tray_icon_->setToolTip(tooltip);
     }
 }
 
-void TrayIcon::update_icon(const QString& icon_path) {
+void TrayIcon::update_icon(const QString &icon_path) {
     if (tray_icon_) {
         QIcon icon(icon_path);
         if (!icon.isNull()) {
@@ -107,7 +106,7 @@ void TrayIcon::update_icon(const QString& icon_path) {
     }
 }
 
-void TrayIcon::on_menu_triggered(QAction* action) {
+void TrayIcon::on_menu_triggered(QAction *action) {
     if (!action) return;
 
     QString action_data = action->data().toString();
@@ -128,43 +127,27 @@ void TrayIcon::show_pair_qrcode() {
         QMessageBox::warning(nullptr, "错误", "服务器未初始化");
         return;
     }
-
-    // 生成配对码
-    const std::string pairCode = server_->generate_pair_code();
-
-    // 获取本机 IP 地址
-    const std::string ipAddress = PlatformUtils::get_preferred_ip_address();
-    const int port = server_->get_port();
-
-    // 构造二维码内容: streamaudio://PairCode@IP:Port
-    const QString qrContent = QString("streamaudio://%1@%2:%3")
-        .arg(QString::fromStdString(pairCode), QString::fromStdString(ipAddress))
-        .arg(port);
-
+    if (!server_->get_pair_code().empty()) {
+        Logger::w(LOG_TAG, "配对未完成");
+        return;
+    }
     // 显示二维码对话框
-    if (qr_dialog_) {
-        qr_dialog_->setContent(qrContent);
-        qr_dialog_->show();
-        qr_dialog_->raise();
-        qr_dialog_->activateWindow();
-    } else {
-        qr_dialog_ = new QRCodeDialog(qrContent);
+    if (qr_dialog_ == nullptr) {
+        qr_dialog_ = new QRCodeDialog(server_);
         qr_dialog_->setAttribute(Qt::WA_DeleteOnClose);
         connect(qr_dialog_, &QDialog::destroyed, this, [this] {
             qr_dialog_ = nullptr;
         });
-        qr_dialog_->show();
     }
-
-    Logger::i(LOG_TAG, "显示配对二维码: " + qrContent.toStdString());
+    qr_dialog_->show();
 }
 
 void TrayIcon::show_about() {
     QMessageBox::about(nullptr, "关于 StreamAudio",
-        "StreamAudio v1.0\n\n"
-        "跨平台音频流服务器\n"
-        "支持 Windows 和 Linux\n\n"
-        "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");
+                       "StreamAudio v1.0\n\n"
+                       "跨平台音频流服务器\n"
+                       "支持 Windows 和 Linux\n\n"
+                       "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");
 }
 
 void TrayIcon::on_activated(QSystemTrayIcon::ActivationReason reason) {

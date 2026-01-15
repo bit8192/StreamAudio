@@ -8,6 +8,10 @@
 #include <optional>
 #include <cstdint>
 
+#ifdef _WIN32
+#pragma push_macro("ERROR")
+#undef ERROR
+#endif
 /**
  * 协议魔数枚举
  * 用于标识不同类型的网络消息
@@ -26,6 +30,9 @@ enum class ProtocolMagic {
     ENCRYPTED,
     ERROR
 };
+#ifdef _WIN32
+#pragma pop_macro("ERROR")
+#endif
 
 /**
  * 协议魔数工具类

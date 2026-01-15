@@ -16,11 +16,13 @@
 #include "audio.h"
 #include "../tools/crypto.h"
 
+constexpr int PAIR_BYTE_LENGTH = 64;
+
 class Device;
 
 class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     int port;
-    std::string current_pair_code;  // 当前配对码
+    std::string pair_code;  // 当前配对码
     std::shared_ptr<Crypto::X25519> ecdh_key_pair = std::make_shared<Crypto::X25519>(Crypto::X25519::generate());
     std::shared_ptr<Crypto::ED25519> sign_key_pair;
     audio_info audio_info_;
@@ -34,16 +36,14 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     std::thread cleanup_thread; // Thread for cleaning up disconnected devices
     void accept_connections(); // Accept new TCP connections
     void cleanup_disconnected_devices(); // Clean up disconnected devices without public key
-    std::function<void()>& pair_callback_; // Callback when a new device is paired
-
 
 public:
     AudioServer(int port, const audio_info &audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair);
 
     void start();
 
-    // 生成新的配对码
-    std::string generate_pair_code();
+    // 生成配对码
+    void generate_pair_code();
 
     // 获取当前配对码
     [[nodiscard]] std::string get_pair_code() const;

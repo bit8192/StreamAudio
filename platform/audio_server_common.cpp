@@ -11,6 +11,7 @@
 #include "../tools/string.h"
 #include "../config.h"
 #include "../device.h"
+#include "../tools/base64.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
 const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-sound";
@@ -101,29 +102,22 @@ void AudioServer::start() {
     cleanup_thread = std::thread(&AudioServer::cleanup_disconnected_devices, this);
 }
 
-std::string AudioServer::generate_pair_code() {
+void AudioServer::generate_pair_code() {
     // 生成6位随机数字配对码
-    unsigned char random_bytes[3];
-    RAND_bytes(random_bytes, 3);
+    unsigned char random_bytes[PAIR_BYTE_LENGTH];
+    RAND_bytes(random_bytes, PAIR_BYTE_LENGTH);
 
-    // 将3字节转换为6位数字 (0-999999)
-    uint32_t num = (random_bytes[0] << 16) | (random_bytes[1] << 8) | random_bytes[2];
-    num = num % 1000000;
+    pair_code = Base64::encode(random_bytes, PAIR_BYTE_LENGTH);
 
-    char code[7];
-    snprintf(code, sizeof(code), "%06u", num);
-    current_pair_code = code;
-
-    Logger::i(LOG_TAG, "生成配对码: " + current_pair_code);
-    return current_pair_code;
+    Logger::i(LOG_TAG, "生成配对码: " + pair_code);
 }
 
 std::string AudioServer::get_pair_code() const {
-    return current_pair_code;
+    return pair_code;
 }
 
 void AudioServer::clear_pair_code() {
-    current_pair_code.clear();
+    pair_code.clear();
 }
 
 int AudioServer::get_port() const {
