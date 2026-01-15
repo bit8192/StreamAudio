@@ -55,6 +55,4 @@ namespace  Logger {
     }
 };
 
-
-
 #endif //LOGGER_H

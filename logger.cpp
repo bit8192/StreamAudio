@@ -8,6 +8,9 @@
 #include <ctime>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
+
+std::mutex log_mutex;
 
 void Logger::log(const log_level level, const std::string &tag, const std::string &message) {
     const auto now = std::chrono::system_clock::now();
@@ -26,6 +29,7 @@ void Logger::log(const log_level level, const std::string &tag, const std::strin
         case trace: level_str = "TRACE";
             break;
     }
+    std::lock_guard lock(log_mutex);
     std::cout << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S") << " [" << tag << "] [" << level_str << "] " << message << std::endl;
 }
 

@@ -9,6 +9,7 @@
 
 #include "platform/audio_server.h"
 #include "logger.h"
+#include "tools/base64.h"
 
 constexpr char LOG_TAG[] = "Config";
 
@@ -21,11 +22,19 @@ std::filesystem::path Config::get_config_file_path() {
     return get_config_directory() / "config.yaml";
 }
 
+void init_server_config(ServerConfig& config)
+{
+    config.port = STREAMAUDIO_CONFIG_DEFAULT_PORT;
+    config.private_key = Crypto::ED25519::generate();
+}
+
 ServerConfig Config::parse_config_file(const std::filesystem::path& config_path) {
     ServerConfig config;
 
     if (!std::filesystem::exists(config_path)) {
         Logger::i(LOG_TAG, "配置文件不存在，使用默认配置");
+        init_server_config(config);
+        save(config);
         return config;
     }
 
@@ -35,6 +44,21 @@ ServerConfig Config::parse_config_file(const std::filesystem::path& config_path)
         if (yaml_config["port"]) {
             config.port = yaml_config["port"].as<uint16_t>();
             Logger::i(LOG_TAG, "读取配置: port=" + std::to_string(config.port));
+        }
+        if (yaml_config["private_key"])
+        {
+            const auto key_pem = yaml_config["private_key"].as<std::string>();
+            config.private_key = std::make_shared<Crypto::ED25519>(
+                Crypto::ED25519::load_private_key_from_mem(
+                    Base64::decode(key_pem)
+                )
+            );
+            Logger::i(LOG_TAG, "读取配置: private_key 已加载");
+        }else
+        {
+            Logger::w(LOG_TAG, "配置文件中缺少 private_key，使用新生成的密钥, 重新生成");
+            config.private_key = Crypto::ED25519::generate();
+            save(config);
         }
     } catch (const YAML::Exception& e) {
         Logger::w(LOG_TAG, "解析配置文件失败: " + std::string(e.what()) + ", 使用默认配置");
@@ -49,7 +73,7 @@ void Config::write_config_file(const std::filesystem::path& config_path, const S
     try {
         YAML::Emitter out;
         out << YAML::BeginMap;
-        out << YAML::Comment("StreamSound 配置文件");
+        out << YAML::Comment("StreamAudio 配置文件");
         out << YAML::Newline;
         out << YAML::Comment("服务器端口");
         out << YAML::Key << "port";

@@ -2,8 +2,8 @@
 // Created by bincker on 2026/1/11.
 //
 
-#ifndef STREAMSOUND_SOCKET_H
-#define STREAMSOUND_SOCKET_H
+#ifndef STREAMAUDIO_SOCKET_H
+#define STREAMAUDIO_SOCKET_H
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -19,4 +19,4 @@ typedef int socket_t;
 constexpr socket_t INVALID_SOCKET = -1;
 #endif
 
-#endif //STREAMSOUND_SOCKET_H
+#endif //STREAMAUDIO_SOCKET_H

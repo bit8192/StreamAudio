@@ -7,17 +7,13 @@
 #include "platform/audio.h"
 #include "config.h"
 #include "exceptions.h"
-#include "platform/tray_icon.h"
+#include "tray_icon.h"
 #include "version.h"
-#include "winsock_guard.h"
+#include "platform/Windows/winsock_guard.h"
 
 constexpr char LOG_TAG[] = "Main";
 int main(int argc, char *argv[]) {
-#ifdef _WIN32
-    // Windows: RAII 管理 Winsock 生命周期
-    // 构造时初始化，析构时自动清理（无论正常退出还是异常退出）
-    WinsockGuard winsock_guard;
-#endif
+    WIN_SOCKET_GUARD_INIT()
 
     try {
         // 创建 Qt 应用
@@ -30,10 +26,10 @@ int main(int argc, char *argv[]) {
         auto audio = Audio();
         const auto format = audio.get_audio_info();
         // 启动服务器
-        const auto server = std::make_shared<AudioServer>(config.port, audio.get_audio_info());
+        const auto server = std::make_shared<AudioServer>(config.port, audio.get_audio_info(), config.private_key);
         server->start();
 
-        Logger::i("StreamSound 服务器已启动  version {}", VERSION_NAME);
+        Logger::i("StreamAudio 服务器已启动  version {}", VERSION_NAME);
         Logger::i(LOG_TAG, "端口: {}", config.port);
         Logger::i(LOG_TAG, "采样率: {}", format.sample_rate);
         Logger::i(LOG_TAG, "位深度: {}", format.bits);

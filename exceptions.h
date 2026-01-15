@@ -2,8 +2,8 @@
 // Created by Bincker on 2025/6/25.
 //
 
-#ifndef STREAMSOUND_EXCEPTIONS_H
-#define STREAMSOUND_EXCEPTIONS_H
+#ifndef STREAMAUDIO_EXCEPTIONS_H
+#define STREAMAUDIO_EXCEPTIONS_H
 
 #include <exception>
 #include <string>
@@ -29,4 +29,4 @@ public:
     [[nodiscard]] const char *what() const _GLIBCXX_TXN_SAFE_DYN _GLIBCXX_NOTHROW override;
 };
 
-#endif //STREAMSOUND_EXCEPTIONS_H
+#endif //STREAMAUDIO_EXCEPTIONS_H

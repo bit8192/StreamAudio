@@ -112,7 +112,7 @@ std::vector<uint8_t> hmac_derive_key(
     return derived_key;
 }
 
-Crypto::KeyPair::KeyPair(std::string name, EVP_PKEY *key, const bool is_public): key(key), is_public(is_public), name(std::move(name)) {
+Crypto::KeyPair::KeyPair(std::string name, EVP_PKEY *key, const bool is_public): key(key), is_public(is_public), cache_mutex(std::make_unique<std::mutex>()), name(std::move(name)) {
 }
 
 Crypto::ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair("ed25519", key,is_public) {
@@ -121,12 +121,8 @@ Crypto::ED25519::ED25519(EVP_PKEY *key, const bool is_public): KeyPair("ed25519"
 Crypto::X25519::X25519(EVP_PKEY *key, const bool is_public): KeyPair("x25519", key,is_public) {
 }
 
-Crypto::ED25519 Crypto::ED25519::empty() {
-    return {nullptr, false};
-}
-
-Crypto::ED25519 Crypto::ED25519::generate() {
-    return {generate_ecc_keypair(NID_ED25519), false};
+std::shared_ptr<Crypto::ED25519> Crypto::ED25519::generate() {
+    return std::shared_ptr<ED25519>(new ED25519(generate_ecc_keypair(NID_ED25519), false));
 }
 
 Crypto::X25519 Crypto::X25519::generate() {
@@ -140,6 +136,13 @@ Crypto::ED25519 Crypto::ED25519::load_public_key_from_file(const std::string &fi
     fclose(file);
     if(!pkey) handleErrors();
     return {pkey, true};
+}
+
+Crypto::ED25519 Crypto::ED25519::load_private_key_from_mem(const std::vector<uint8_t>& data)
+{
+    const auto pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, nullptr, data.data(), data.size());
+    if(!pkey) handleErrors();
+    return {pkey, false};
 }
 
 Crypto::ED25519 Crypto::ED25519::load_private_key_from_file(const std::string &filename) {
@@ -164,18 +167,24 @@ Crypto::X25519 Crypto::X25519::load_public_key_from_mem(const std::vector<uint8_
 }
 
 std::vector<uint8_t> Crypto::KeyPair::export_public_key() const {
+    if (!cached_public_key.empty()) return cached_public_key;
+    std::lock_guard lock(*cache_mutex);
+    if (!cached_public_key.empty()) return cached_public_key;
     size_t len = 32;
-    std::vector<uint8_t> pubkey(len, 0);
-    EVP_PKEY_get_raw_public_key(key, pubkey.data(), &len);
-    return pubkey;
+    cached_public_key.resize(len);
+    EVP_PKEY_get_raw_public_key(key, cached_public_key.data(), &len);
+    return cached_public_key;
 }
 
 std::vector<uint8_t> Crypto::KeyPair::export_private_key() const {
     if (is_public) throw CryptoException("this is not a private key");
+    if (!cached_private_key.empty()) return cached_private_key;
+    std::lock_guard lock(*cache_mutex);
+    if (!cached_private_key.empty()) return cached_private_key;
     size_t len = 32;
-    std::vector<uint8_t> prev_key(len, 0);
-    EVP_PKEY_get_raw_private_key(key, prev_key.data(), &len);
-    return prev_key;
+    cached_private_key.resize(len);
+    EVP_PKEY_get_raw_private_key(key, cached_private_key.data(), &len);
+    return cached_private_key;
 }
 
 void Crypto::KeyPair::write_public_key_to_file(const std::string &filename) const {

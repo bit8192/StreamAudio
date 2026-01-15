@@ -77,7 +77,7 @@ private:
     // 加密相关
     std::vector<uint8_t> session_key;
     std::atomic<bool> ecdh_completed;
-    std::shared_ptr<Crypto::ED25519> public_key; // 服务器的公钥
+    std::shared_ptr<Crypto::ED25519> public_key = nullptr; // 服务器的公钥
 
     // 消息管理
     std::atomic<int32_t> message_id_counter;

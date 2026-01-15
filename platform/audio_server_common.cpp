@@ -122,6 +122,10 @@ std::string AudioServer::get_pair_code() const {
     return current_pair_code;
 }
 
+void AudioServer::clear_pair_code() {
+    current_pair_code.clear();
+}
+
 int AudioServer::get_port() const {
     return port;
 }
@@ -134,12 +138,15 @@ std::vector<uint8_t> AudioServer::ecdh_key(std::vector<uint8_t> key) {
     // 加载客户端公钥
     auto client_public_key = Crypto::X25519::load_public_key_from_mem(key);
     // 使用服务器私钥和客户端公钥派生共享密钥
-    std::vector<uint8_t> salt; // 空盐值
-    return ecdh_key_pair.derive_shared_secret(client_public_key, salt);
+    return ecdh_key_pair->derive_shared_secret(client_public_key);
 }
 
 std::vector<uint8_t> AudioServer::get_ecdh_pub_key_data() const {
-    return ecdh_key_pair.export_public_key();
+    return ecdh_key_pair->export_public_key();
+}
+
+std::shared_ptr<Crypto::ED25519> AudioServer::get_sign_key() const {
+    return sign_key_pair;
 }
 
 void AudioServer::cleanup_disconnected_devices() {

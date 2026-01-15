@@ -10,7 +10,7 @@ foreach(prop ${VERSION_PROPS})
     endif()
 endforeach()
 
-project(StreamSound VERSION ${VERSION_NAME})
+project(StreamAudio VERSION ${VERSION_NAME})
 
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_AUTOMOC ON)
@@ -23,13 +23,13 @@ configure_file(
 include_directories(${CMAKE_BINARY_DIR})
 
 if (WIN32)
-    set(STREAM_SOUND_LINK_LIBRARIES ws2_32)
+    set(STREAM_AUDIO_LINK_LIBRARIES ws2_32)
     set(CMAKE_PREFIX_PATH "D:/msys64/mingw64")
 elseif (LINUX)
-    set(STREAM_SOUND_LINK_LIBRARIES pulse pulse-simple)
+    set(STREAM_AUDIO_LINK_LIBRARIES pulse pulse-simple)
 endif ()
 
-add_executable(StreamSound main.cpp
+add_executable(StreamAudio main.cpp
         platform/${CMAKE_SYSTEM_NAME}/audio.cpp
         platform/audio.h
         exceptions.h
@@ -41,12 +41,12 @@ add_executable(StreamSound main.cpp
         platform/audio_server_common.cpp
         config.cpp
         config.h
-        platform/tray_icon.cpp
-        platform/tray_icon.h
-        platform/qrcode_dialog.cpp
-        platform/qrcode_dialog.h
-        platform/platform_utils.cpp
-        platform/platform_utils.h
+        tray_icon.cpp
+        tray_icon.h
+        qrcode_dialog.cpp
+        qrcode_dialog.h
+        platform_utils.cpp
+        platform_utils.h
         tools/crypto.cpp
         tools/crypto.h
         tools/base64.cpp
@@ -55,10 +55,6 @@ add_executable(StreamSound main.cpp
         tools/string.h
         tools/qrcodegen.cpp
         tools/qrcodegen.h
-        data_operator.cpp
-        data_operator.h
-        data_pack.cpp
-        data_pack.h
         protocol_magic.cpp
         protocol_magic.h
         message.cpp
@@ -73,22 +69,22 @@ add_executable(StreamSound main.cpp
 
 # Debug
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_compile_definitions(StreamSound PUBLIC DEBUG_MODE=1)
+    target_compile_definitions(StreamAudio PUBLIC DEBUG_MODE=1)
 endif()
 
 # Openssl
 find_package(OpenSSL REQUIRED)
-list(APPEND STREAM_SOUND_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+list(APPEND STREAM_AUDIO_LINK_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
 
 # yaml-cpp
 find_package(yaml-cpp REQUIRED)
-list(APPEND STREAM_SOUND_LINK_LIBRARIES yaml-cpp::yaml-cpp)
+list(APPEND STREAM_AUDIO_LINK_LIBRARIES yaml-cpp::yaml-cpp)
 
 # Qt
 find_package(Qt6 COMPONENTS Core Gui Widgets Network REQUIRED)
-list(APPEND STREAM_SOUND_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets Qt::Network)
+list(APPEND STREAM_AUDIO_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets Qt::Network)
 
-target_link_libraries(StreamSound ${STREAM_SOUND_LINK_LIBRARIES})
+target_link_libraries(StreamAudio ${STREAM_AUDIO_LINK_LIBRARIES})
 
 if (WIN32 AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     # ====================================== 拷贝QT依赖

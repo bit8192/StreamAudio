@@ -2,8 +2,8 @@
 // Created by Claude on 2026/1/9.
 //
 
-#ifndef STREAMSOUND_QRCODE_DIALOG_H
-#define STREAMSOUND_QRCODE_DIALOG_H
+#ifndef STREAMAUDIO_QRCODE_DIALOG_H
+#define STREAMAUDIO_QRCODE_DIALOG_H
 
 #include <QDialog>
 #include <QLabel>
@@ -25,4 +25,4 @@ private:
     QPixmap generateQRCode(const QString& content);
 };
 
-#endif //STREAMSOUND_QRCODE_DIALOG_H
+#endif //STREAMAUDIO_QRCODE_DIALOG_H

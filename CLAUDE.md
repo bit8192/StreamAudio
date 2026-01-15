@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-StreamSound 是一个跨平台的音频流服务器项目，用于捕获系统音频并通过网络传输给客户端。该项目使用 C++23 编写，支持 Windows 和 Linux 平台。
+StreamAudio 是一个跨平台的音频流服务器项目，用于捕获系统音频并通过网络传输给客户端。该项目使用 C++23 编写，支持 Windows 和 Linux 平台。
 
 **协议架构** (重构中):
 - **TCP**: 用于客户端认证、控制消息和密钥交换
@@ -24,8 +24,8 @@ cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release
 cmake --build cmake-build-release
 
 # 运行
-./cmake-build-debug/StreamSound    # Debug 版本
-./cmake-build-release/StreamSound  # Release 版本
+./cmake-build-debug/StreamAudio    # Debug 版本
+./cmake-build-release/StreamAudio  # Release 版本
 ```
 
 ### 平台依赖

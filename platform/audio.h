@@ -2,8 +2,8 @@
 // Created by Bincker on 2025/6/25.
 //
 
-#ifndef STREAMSOUND_AUDIO_H
-#define STREAMSOUND_AUDIO_H
+#ifndef STREAMAUDIO_AUDIO_H
+#define STREAMAUDIO_AUDIO_H
 
 #ifdef _WIN32
 #include <windows.h>
@@ -73,4 +73,4 @@ public:
 };
 
 
-#endif //STREAMSOUND_AUDIO_H
+#endif //STREAMAUDIO_AUDIO_H

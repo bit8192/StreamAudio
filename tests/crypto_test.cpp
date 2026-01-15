@@ -197,9 +197,8 @@ TEST(x25519_key_exchange) {
     auto bob_pub_loaded = Crypto::X25519::load_public_key_from_mem(bob_pub);
 
     // 派生共享密钥
-    std::vector<uint8_t> salt = {'s', 'a', 'l', 't'};
-    auto secret1 = alice.derive_shared_secret(bob_pub_loaded, salt);
-    auto secret2 = bob.derive_shared_secret(alice_pub_loaded, salt);
+    auto secret1 = alice.derive_shared_secret(bob_pub_loaded);
+    auto secret2 = bob.derive_shared_secret(alice_pub_loaded);
 
     // 双方应该得到相同的共享密钥
     ASSERT_TRUE(TestUtils::bytes_equal(secret1, secret2));
@@ -215,17 +214,17 @@ TEST(ed25519_sign_verify) {
     std::vector<uint8_t> data = {'h', 'e', 'l', 'l', 'o'};
 
     // 签名
-    auto signature = keypair.sign(data);
+    auto signature = keypair->sign(data);
 
     // ED25519 签名应该是 64 字节
     ASSERT_EQ(signature.size(), 64);
 
     // 验证签名
-    bool valid = keypair.verify(data.data(), data.size(), signature);
+    bool valid = keypair->verify(data.data(), data.size(), signature);
     ASSERT_TRUE(valid);
 
     // 修改数据后验证应该失败
     std::vector<uint8_t> tampered_data = {'h', 'e', 'l', 'l', 'O'};
-    bool invalid = keypair.verify(tampered_data.data(), tampered_data.size(), signature);
+    bool invalid = keypair->verify(tampered_data.data(), tampered_data.size(), signature);
     ASSERT_FALSE(invalid);
 }

@@ -5,6 +5,8 @@
 #ifndef CRYPTO_H
 #define CRYPTO_H
 
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include <openssl/types.h>
@@ -15,6 +17,9 @@ namespace Crypto {
         EVP_PKEY *key = nullptr;
         bool is_public = false;
     private:
+        mutable std::vector<uint8_t> cached_public_key;
+        mutable std::vector<uint8_t> cached_private_key;
+        mutable std::unique_ptr<std::mutex> cache_mutex;
         std::string name;
 
     public:
@@ -35,19 +40,19 @@ namespace Crypto {
         ED25519(EVP_PKEY *key, bool is_public);
 
     public:
-        static ED25519 empty();
-
-        static ED25519 generate();
+        static std::shared_ptr<ED25519> generate();
 
         static ED25519 load_public_key_from_file(const std::string &filename);
 
         static ED25519 load_private_key_from_file(const std::string &filename);
 
+        static ED25519 load_private_key_from_mem(const std::vector<uint8_t> &data);
+
         static ED25519 load_public_key_from_mem(const std::vector<uint8_t> &data);
 
         [[nodiscard]] std::vector<uint8_t> sign(const std::vector<uint8_t> &data) const;
 
-        [[nodiscard]] bool verify(const uint8_t* ptr, const size_t size, const std::vector<uint8_t> &signature) const;
+        [[nodiscard]] bool verify(const uint8_t* ptr, size_t size, const std::vector<uint8_t> &signature) const;
     };
 
     class X25519 : public KeyPair {

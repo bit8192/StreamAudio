@@ -3,8 +3,8 @@
 //
 
 #include "qrcode_dialog.h"
-#include "../tools/qrcodegen.h"
-#include "../logger.h"
+#include "tools/qrcodegen.h"
+#include "logger.h"
 
 #include <QVBoxLayout>
 #include <QPainter>
@@ -35,7 +35,7 @@ QRCodeDialog::QRCodeDialog(const QString& content, QWidget* parent)
     layout->addWidget(content_label_);
 
     // 提示标签
-    auto* hint_label = new QLabel("请使用 StreamSound 客户端扫描二维码进行配对", this);
+    auto* hint_label = new QLabel("请使用 StreamAudio 客户端扫描二维码进行配对", this);
     hint_label->setAlignment(Qt::AlignCenter);
     hint_label->setStyleSheet("color: gray; font-size: 12px;");
     layout->addWidget(hint_label);

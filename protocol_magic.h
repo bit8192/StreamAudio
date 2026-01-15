@@ -36,6 +36,9 @@ public:
     // 获取魔数对应的字节数组
     static std::vector<uint8_t> get_magic_bytes(ProtocolMagic magic);
 
+    // 获取魔数对应的字节数组长度
+    static size_t get_magic_bytes_len(ProtocolMagic magic);
+
     // 获取魔数对应的字符串
     static std::string_view get_magic_string(ProtocolMagic magic);
 

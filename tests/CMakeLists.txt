@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # 如果独立运行此文件，需要设置项目
 if(NOT CMAKE_PROJECT_NAME)
-    project(StreamSoundTests)
+    project(StreamAudioTests)
     set(CMAKE_CXX_STANDARD 23)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
@@ -24,12 +24,12 @@ add_executable(run_tests
         ../platform/audio_server_common.cpp
         ../config.cpp
         ../config.h
-        ../platform/tray_icon.cpp
-        ../platform/tray_icon.h
-        ../platform/qrcode_dialog.cpp
-        ../platform/qrcode_dialog.h
-        ../platform/platform_utils.cpp
-        ../platform/platform_utils.h
+        ../tray_icon.cpp
+        ../tray_icon.h
+        ../qrcode_dialog.cpp
+        ../qrcode_dialog.h
+        ../platform_utils.cpp
+        ../platform_utils.h
         ../tools/crypto.cpp
         ../tools/crypto.h
         ../tools/base64.cpp
@@ -38,10 +38,6 @@ add_executable(run_tests
         ../tools/string.h
         ../tools/qrcodegen.cpp
         ../tools/qrcodegen.h
-        ../data_operator.cpp
-        ../data_operator.h
-        ../data_pack.cpp
-        ../data_pack.h
         ../protocol_magic.cpp
         ../protocol_magic.h
         ../message.cpp
@@ -56,6 +52,7 @@ add_executable(run_tests
         test_main.cpp
         crypto_test.cpp
         ware_test.cpp
+        cpp_test.cpp
 )
 
 

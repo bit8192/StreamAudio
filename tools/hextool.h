@@ -2,8 +2,8 @@
 // Created by bincker on 2026/1/12.
 //
 
-#ifndef STREAMSOUND_HEXTOOL_H
-#define STREAMSOUND_HEXTOOL_H
+#ifndef STREAMAUDIO_HEXTOOL_H
+#define STREAMAUDIO_HEXTOOL_H
 #include <cstdint>
 #include <string>
 
@@ -13,4 +13,4 @@ namespace HEX_TOOL {
 };
 
 
-#endif //STREAMSOUND_HEXTOOL_H
+#endif //STREAMAUDIO_HEXTOOL_H

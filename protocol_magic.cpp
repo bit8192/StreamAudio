@@ -68,6 +68,11 @@ std::vector<uint8_t> ProtocolMagicHelper::get_magic_bytes(ProtocolMagic magic) {
     throw std::invalid_argument("Invalid ProtocolMagic value");
 }
 
+size_t ProtocolMagicHelper::get_magic_bytes_len(ProtocolMagic magic)
+{
+    return get_magic_bytes(magic).size();
+}
+
 std::string_view ProtocolMagicHelper::get_magic_string(ProtocolMagic magic) {
     const auto &all_magics = get_all_magics();
     for (const auto &info: all_magics) {

@@ -3,14 +3,14 @@
 //
 
 #include "tray_icon.h"
-#include "audio_server.h"
+#include "platform/audio_server.h"
 #include "qrcode_dialog.h"
 #include "platform_utils.h"
 #include <QAction>
 #include <QIcon>
 #include <QApplication>
 #include <QMessageBox>
-#include "../logger.h"
+#include "logger.h"
 
 constexpr char LOG_TAG[] = "TrayIcon";
 
@@ -32,7 +32,7 @@ TrayIcon::TrayIcon(const QString& icon_path, std::shared_ptr<AudioServer> server
 
     // 设置默认 tooltip
     if (server_) {
-        tray_icon_->setToolTip(QString("StreamSound - 端口: %1").arg(server_->get_port()));
+        tray_icon_->setToolTip(QString("StreamAudio - 端口: %1").arg(server_->get_port()));
     }
 
     Logger::i(LOG_TAG, "托盘图标已创建");
@@ -130,16 +130,15 @@ void TrayIcon::show_pair_qrcode() {
     }
 
     // 生成配对码
-    std::string pairCode = server_->generate_pair_code();
+    const std::string pairCode = server_->generate_pair_code();
 
     // 获取本机 IP 地址
-    std::string ipAddress = PlatformUtils::get_preferred_ip_address();
-    int port = server_->get_port();
+    const std::string ipAddress = PlatformUtils::get_preferred_ip_address();
+    const int port = server_->get_port();
 
-    // 构造二维码内容: streamsound://PairCode@IP:Port
-    QString qrContent = QString("streamsound://%1@%2:%3")
-        .arg(QString::fromStdString(pairCode))
-        .arg(QString::fromStdString(ipAddress))
+    // 构造二维码内容: streamaudio://PairCode@IP:Port
+    const QString qrContent = QString("streamaudio://%1@%2:%3")
+        .arg(QString::fromStdString(pairCode), QString::fromStdString(ipAddress))
         .arg(port);
 
     // 显示二维码对话框
@@ -151,7 +150,7 @@ void TrayIcon::show_pair_qrcode() {
     } else {
         qr_dialog_ = new QRCodeDialog(qrContent);
         qr_dialog_->setAttribute(Qt::WA_DeleteOnClose);
-        connect(qr_dialog_, &QDialog::destroyed, this, [this]() {
+        connect(qr_dialog_, &QDialog::destroyed, this, [this] {
             qr_dialog_ = nullptr;
         });
         qr_dialog_->show();
@@ -161,8 +160,8 @@ void TrayIcon::show_pair_qrcode() {
 }
 
 void TrayIcon::show_about() {
-    QMessageBox::about(nullptr, "关于 StreamSound",
-        "StreamSound v1.0\n\n"
+    QMessageBox::about(nullptr, "关于 StreamAudio",
+        "StreamAudio v1.0\n\n"
         "跨平台音频流服务器\n"
         "支持 Windows 和 Linux\n\n"
         "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");

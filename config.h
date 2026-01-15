@@ -2,12 +2,14 @@
 // Created by Claude on 2026/1/1.
 //
 
-#ifndef STREAMSOUND_CONFIG_H
-#define STREAMSOUND_CONFIG_H
+#ifndef STREAMAUDIO_CONFIG_H
+#define STREAMAUDIO_CONFIG_H
 
 #include <cstdint>
 #include <string>
 #include <filesystem>
+
+#include "tools/crypto.h"
 
 #ifdef _WIN32
 const auto HOME_DIR = std::filesystem::path(std::getenv("USERPROFILE"));
@@ -15,10 +17,11 @@ const auto HOME_DIR = std::filesystem::path(std::getenv("USERPROFILE"));
 const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
 #endif
 
-#define STREAMSOUND_CONFIG_DEFAULT_PORT 8910
+#define STREAMAUDIO_CONFIG_DEFAULT_PORT 8910
 
 struct ServerConfig {
-    uint16_t port = STREAMSOUND_CONFIG_DEFAULT_PORT;  // 默认端口
+    uint16_t port = STREAMAUDIO_CONFIG_DEFAULT_PORT;  // 默认端口
+    std::shared_ptr<Crypto::ED25519> private_key; // 签名密钥对
 };
 
 class Config {
@@ -33,4 +36,4 @@ private:
     static std::filesystem::path get_config_directory();
 };
 
-#endif //STREAMSOUND_CONFIG_H
+#endif //STREAMAUDIO_CONFIG_H

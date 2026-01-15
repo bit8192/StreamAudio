@@ -29,4 +29,7 @@ public:
     WinsockGuard& operator=(WinsockGuard&&) = delete;
 };
 
+#define WIN_SOCKET_GUARD_INIT() WinsockGuard winsock_guard;
+#else
+#define WIN_SOCKET_GUARD_INIT()
 #endif // _WIN32

@@ -2,8 +2,8 @@
 // Created by Claude on 2026/1/1.
 //
 
-#ifndef STREAMSOUND_TRAY_ICON_H
-#define STREAMSOUND_TRAY_ICON_H
+#ifndef STREAMAUDIO_TRAY_ICON_H
+#define STREAMAUDIO_TRAY_ICON_H
 
 #include <QSystemTrayIcon>
 #include <QMenu>
@@ -42,4 +42,4 @@ private:
     void show_about();
 };
 
-#endif //STREAMSOUND_TRAY_ICON_H
+#endif //STREAMAUDIO_TRAY_ICON_H
