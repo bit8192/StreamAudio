@@ -34,11 +34,11 @@ static void init_crc_table() {
 }
 
 // 计算 CRC16
-uint16_t Message::calculate_crc16(const std::vector<uint8_t>& data) {
+uint16_t Message::calculate_crc16(const std::vector<uint8_t> &data) {
     init_crc_table();
 
     uint16_t crc = CRC_INITIAL_VALUE;
-    for (uint8_t byte : data) {
+    for (uint8_t byte: data) {
         uint8_t index = ((crc >> 8) ^ byte) & 0xFF;
         crc = ((crc << 8) ^ crc_table[index]) & 0xFFFF;
     }
@@ -46,14 +46,14 @@ uint16_t Message::calculate_crc16(const std::vector<uint8_t>& data) {
     return crc;
 }
 
-bool Message::verify_signature(const Crypto::ED25519& verify_key) const
-{
+bool Message::verify_signature(const Crypto::ED25519 &verify_key) const {
     const auto data = serialize_data_section();
-    return verify_key.verify(data.data(), ProtocolMagicHelper::get_magic_bytes_len(magic) + MIN_LENGTH + pack_length, sign);
+    return verify_key.verify(data.data(), ProtocolMagicHelper::get_magic_bytes_len(magic) + MIN_LENGTH + pack_length,
+                             sign);
 }
 
 // 辅助函数：写入 32 位整数（大端序）
-static void write_int32_be(std::vector<uint8_t>& buffer, int32_t value) {
+static void write_int32_be(std::vector<uint8_t> &buffer, int32_t value) {
     buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
     buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
     buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
@@ -61,7 +61,7 @@ static void write_int32_be(std::vector<uint8_t>& buffer, int32_t value) {
 }
 
 // 辅助函数：读取 32 位整数（大端序）
-static int32_t read_int32_be(const uint8_t* buffer) {
+static int32_t read_int32_be(const uint8_t *buffer) {
     return (static_cast<int32_t>(buffer[0]) << 24) |
            (static_cast<int32_t>(buffer[1]) << 16) |
            (static_cast<int32_t>(buffer[2]) << 8) |
@@ -69,13 +69,13 @@ static int32_t read_int32_be(const uint8_t* buffer) {
 }
 
 // 辅助函数：写入 16 位整数（大端序）
-static void write_uint16_be(std::vector<uint8_t>& buffer, uint16_t value) {
+static void write_uint16_be(std::vector<uint8_t> &buffer, uint16_t value) {
     buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
     buffer.push_back(static_cast<uint8_t>(value & 0xFF));
 }
 
 // 辅助函数：读取 16 位整数（大端序）
-static uint16_t read_uint16_be(const uint8_t* buffer) {
+static uint16_t read_uint16_be(const uint8_t *buffer) {
     return (static_cast<uint16_t>(buffer[0]) << 8) |
            static_cast<uint16_t>(buffer[1]);
 }
@@ -98,8 +98,7 @@ Message Message::build(
     return msg;
 }
 
-std::vector<uint8_t> Message::serialize_data_section() const
-{
+std::vector<uint8_t> Message::serialize_data_section() const {
     auto magic_bytes = to_bytes(magic);
     std::vector<uint8_t> buffer;
     buffer.reserve(magic_bytes.size() + pack_length + MIN_LENGTH);
@@ -122,7 +121,7 @@ std::vector<uint8_t> Message::serialize_data_section() const
 }
 
 // 序列化消息
-std::vector<uint8_t> Message::serialize(const std::shared_ptr<Crypto::ED25519>& sign_key) const {
+std::vector<uint8_t> Message::serialize(const std::shared_ptr<Crypto::ED25519> &sign_key) const {
     auto buffer = serialize_data_section();
     // 写入签名
     if (sign_key) {
@@ -156,10 +155,10 @@ std::string Message::to_string() const {
 
 // 解析消息
 std::optional<Message> Message::parse(
-    const uint8_t* buffer,
+    const uint8_t *buffer,
     const size_t size,
-    size_t& bytes_consumed,
-    const std::shared_ptr<Crypto::ED25519>& verify_key
+    size_t &bytes_consumed,
+    const std::shared_ptr<Crypto::ED25519> &verify_key
 ) {
     // 检查最小长度
     if (size < MIN_MAGIC_LENGTH + MIN_LENGTH) {
@@ -178,7 +177,7 @@ std::optional<Message> Message::parse(
         return std::nullopt;
     }
 
-    const uint8_t* ptr = buffer + magic_end_offset;
+    const uint8_t *ptr = buffer + magic_end_offset;
 
     // 读取 header（大端序）
     const int32_t version = read_int32_be(ptr);
@@ -250,40 +249,42 @@ std::optional<Message> Message::parse(
     return resolve_message(std::move(msg));
 }
 
-// ByteArrayMessageBody 加密解密方法
-std::optional<Message> ByteArrayMessageBody::decrypt_aes256gcm(const std::vector<uint8_t>& key, const std::shared_ptr<Crypto::ED25519>& verify_sign_key) const {
+std::vector<uint8_t> ByteArrayMessageBody::decrypt_aes256gcm(const std::vector<uint8_t> &key) const {
     if (data.size() < IV_LENGTH) {
-        Logger::w("ByteArrayMessageBody", "Encrypted data too short");
-        return std::nullopt;
+        throw std::invalid_argument("Message is too short");
     }
 
     // 提取 IV 和密文
     const std::vector iv(data.begin(), data.begin() + IV_LENGTH);
     const std::vector ciphertext(data.begin() + IV_LENGTH, data.end());
 
-    try {
-        // 解密
-        const auto plaintext = Crypto::aes_256_gcm_decrypt(key, iv, ciphertext);
+    return Crypto::aes_256_gcm_decrypt(key, iv, ciphertext);
+}
 
-        // 解析解密后的消息
+// ByteArrayMessageBody 加密解密方法
+std::optional<Message> ByteArrayMessageBody::decrypt_aes256gcm_to_msg(const std::vector<uint8_t> &key,
+                                                                      const std::shared_ptr<Crypto::ED25519> &
+                                                                      verify_sign_key) const {
+    try {
         size_t bytes_consumed = 0;
-        return Message::parse(plaintext.data(), plaintext.size(), bytes_consumed, verify_sign_key);
-    } catch (const std::exception& e) {
+        const auto plain_data = decrypt_aes256gcm(key);
+        return Message::parse(plain_data.data(), plain_data.size(), bytes_consumed, verify_sign_key);
+    } catch (const std::exception &e) {
         Logger::e("ByteArrayMessageBody", std::string("Decryption failed"), e);
         return std::nullopt;
     }
 }
 
 ByteArrayMessageBody ByteArrayMessageBody::build_aes256gcm_encrypted_body(
-    const std::vector<uint8_t>& plain_data,
-    const std::vector<uint8_t>& key
+    const std::vector<uint8_t> &plain_data,
+    const std::vector<uint8_t> &key
 ) {
     // 生成随机 IV
     std::vector<uint8_t> iv(IV_LENGTH);
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, 255);
-    for (auto& byte : iv) {
+    for (auto &byte: iv) {
         byte = static_cast<uint8_t>(dis(gen));
     }
 
@@ -301,8 +302,8 @@ ByteArrayMessageBody ByteArrayMessageBody::build_aes256gcm_encrypted_body(
 
 // 转换为加密消息
 Message Message::to_aes256gcm_encrypted_message(
-    const std::shared_ptr<Crypto::ED25519>& sign_key,
-    const std::vector<uint8_t>& encrypt_key
+    const std::shared_ptr<Crypto::ED25519> &sign_key,
+    const std::vector<uint8_t> &encrypt_key
 ) const {
     // 先序列化并签名原始消息
     const auto serialized = serialize(sign_key);
@@ -332,25 +333,25 @@ Message Message::resolve_message(Message msg) {
     }
 
     switch (msg.magic) {
-    case ProtocolMagic::PAIR:
-    case ProtocolMagic::PAIR_RESPONSE:
-    case ProtocolMagic::ECDH:
-    case ProtocolMagic::ECDH_RESPONSE:
-    case ProtocolMagic::AUTHENTICATION:
-    case ProtocolMagic::AUTHENTICATION_RESPONSE:
-    case ProtocolMagic::PLAY:
-    case ProtocolMagic::PLAY_RESPONSE:
-    case ProtocolMagic::STOP:
-    case ProtocolMagic::STOP_RESPONSE:
-    case ProtocolMagic::ENCRYPTED:
-        // 保持为 ByteArrayMessageBody
-        break;
-    case ProtocolMagic::ERROR:
-        // 字符串消息
-        msg.body = std::make_shared<StringMessageBody>(
-            std::string(byte_body->data.begin(), byte_body->data.end())
-        );
-        break;
+        case ProtocolMagic::PAIR:
+        case ProtocolMagic::PAIR_RESPONSE:
+        case ProtocolMagic::ECDH:
+        case ProtocolMagic::ECDH_RESPONSE:
+        case ProtocolMagic::AUTHENTICATION:
+        case ProtocolMagic::AUTHENTICATION_RESPONSE:
+        case ProtocolMagic::PLAY:
+        case ProtocolMagic::PLAY_RESPONSE:
+        case ProtocolMagic::STOP:
+        case ProtocolMagic::STOP_RESPONSE:
+        case ProtocolMagic::ENCRYPTED:
+            // 保持为 ByteArrayMessageBody
+            break;
+        case ProtocolMagic::ERROR:
+            // 字符串消息
+            msg.body = std::make_shared<StringMessageBody>(
+                std::string(byte_body->data.begin(), byte_body->data.end())
+            );
+            break;
     }
 
     return msg;

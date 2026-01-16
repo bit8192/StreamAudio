@@ -8,6 +8,8 @@
 #include <vector>
 #include <string>
 
+#include "../tools/hextool.h"
+
 // 测试 SHA256 哈希
 TEST(sha256_basic) {
     std::vector<uint8_t> data = {'h', 'e', 'l', 'l', 'o'};
@@ -227,4 +229,20 @@ TEST(ed25519_sign_verify) {
     std::vector<uint8_t> tampered_data = {'h', 'e', 'l', 'l', 'O'};
     bool invalid = keypair->verify(tampered_data.data(), tampered_data.size(), signature);
     ASSERT_FALSE(invalid);
+}
+
+TEST(aes_256_gcm_encrypt) {
+    std::vector<uint8_t> plaintext = HEX_TOOL::hex_to_bytes("b3dcc08925962d8f9325ef58b14a3254254098f6eebe6d855968e29859bbf2ff");
+    std::vector<uint8_t> key = HEX_TOOL::hex_to_bytes("2b7a9b43402b446bddfa954741ab784c5117478e95f15bdbcb8a728bfa857719");
+    std::vector<uint8_t> iv = HEX_TOOL::hex_to_bytes("6996a9ace1a39d27525cc91479975f8c");
+    const auto encrypted_data = Crypto::aes_256_gcm_encrypt(key, iv, plaintext);
+    std::cout << "encrypted data: " << HEX_TOOL::to_hex(encrypted_data) << std::endl;
+}
+
+TEST(aes_256_gcm_decrypt) {
+    std::vector<uint8_t> encrypted_data = HEX_TOOL::hex_to_bytes("1c04480302d62f8e97a218d5d1f9542ff5fe5b6e0878df7a29503e3418cb7dbb17d96f2f9e481e14a106910a81baf6cc");
+    std::vector<uint8_t> key = HEX_TOOL::hex_to_bytes("637c1005e24cd0b3d8b73d2f6ffafd8877464d83c4a29c2a8d0fdf7a2663d481");
+    std::vector<uint8_t> iv = HEX_TOOL::hex_to_bytes("353a0110c2d9cc6e449557e2b0da5dff");
+    const auto plaintext = Crypto::aes_256_gcm_decrypt(key, iv, encrypted_data);
+    std::cout << "plaintext data: " << HEX_TOOL::to_hex(plaintext) << std::endl;
 }

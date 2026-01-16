@@ -5,6 +5,7 @@
 #include <memory>
 #include <cstdint>
 #include <optional>
+#include <openssl/evp.h>
 
 // Forward declarations
 namespace Crypto {
@@ -32,7 +33,7 @@ class ByteArrayMessageBody : public MessageBody {
 public:
     std::vector<uint8_t> data;
 
-    static constexpr size_t IV_LENGTH = 16;
+    static constexpr size_t IV_LENGTH = 12;
 
     ByteArrayMessageBody() = default;
     explicit ByteArrayMessageBody(std::vector<uint8_t> data) : data(std::move(data)) {}
@@ -46,8 +47,10 @@ public:
         return data.size();
     }
 
+    [[nodiscard]] std::vector<uint8_t> decrypt_aes256gcm(const std::vector<uint8_t>& key) const;
+
     // 从AES加密数据解密并解析消息
-    [[nodiscard]] std::optional<Message> decrypt_aes256gcm(const std::vector<uint8_t>& key, const std::shared_ptr<Crypto::ED25519>& verify_sign_key) const;
+    [[nodiscard]] std::optional<Message> decrypt_aes256gcm_to_msg(const std::vector<uint8_t>& key, const std::shared_ptr<Crypto::ED25519>& verify_sign_key) const;
 
     // 构建AES加密数据包体
     static ByteArrayMessageBody build_aes256gcm_encrypted_body(

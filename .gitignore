@@ -1,4 +1,5 @@
 cmake-build-debug
 cmake-build-releases
+cmake-build-wsl
 
 icon.png

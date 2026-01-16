@@ -21,14 +21,11 @@ StreamAudio 是一个跨平台的音频流服务器项目，用于捕获系统�
 cmake -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug
 cmake --build cmake-build-debug
 
-# Release 构建
-cmake -B cmake-build-release -DCMAKE_BUILD_TYPE=Release
-cmake --build cmake-build-release
-
 # 运行
 ./cmake-build-debug/StreamAudio    # Debug 版本
-./cmake-build-release/StreamAudio  # Release 版本
 ```
+
+在Windows和Linux环境中构建目录都是cmake-build-debug, 所以当Claude Code (claude.ai/code)处于WSL环境中时请构建到cmake-build-wsl
 
 ### 平台依赖
 

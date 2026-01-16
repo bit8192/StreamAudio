@@ -11,8 +11,12 @@
 #include <openssl/pem.h>
 #include <openssl/err.h>
 #include <openssl/core_names.h>
-#include "../exceptions.h"
 
+#include "hextool.h"
+#include "../exceptions.h"
+#include "../logger.h"
+
+constexpr char LOG_TAG[]="Crypto";
 constexpr char CRYPTO_NAME_SHA256[] = "SHA256";
 const std::vector<uint8_t> derive_key_info = {'s', 't', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', '0'};
 
@@ -328,7 +332,7 @@ std::vector<uint8_t> Crypto::hmac_sha256(
 
 // 计算 SHA-256 哈希
 std::vector<uint8_t> Crypto::sha256(const std::vector<uint8_t>& data) {
-    std::vector<uint8_t> hash(EVP_MAX_MD_SIZE);
+    std::vector<uint8_t> hash(SHA256_DIGEST_LENGTH);
     unsigned int hash_len = 0;
 
     // 1. 获取 SHA-256 的 EVP_MD 结构
@@ -376,6 +380,8 @@ std::vector<uint8_t> Crypto::aes_256_gcm_encrypt(
     if (iv.empty()) {
         throw CryptoException("IV cannot be empty");
     }
+
+    Logger::d(LOG_TAG, "encrypt aes256gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
@@ -447,6 +453,8 @@ std::vector<uint8_t> Crypto::aes_256_gcm_decrypt(
     if (ciphertext.size() < 16) {
         throw CryptoException("Ciphertext too short (must include 16-byte authentication tag)");
     }
+
+    Logger::d(LOG_TAG, "decrypt aes256gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
