@@ -64,6 +64,8 @@ public:
 
     std::shared_ptr<Crypto::ED25519> get_sign_key() const;
 
+    audio_info get_audio_info() const;
+
     ~AudioServer();
 private:
     void accept_device(socket_t socket, const sockaddr_storage &client_addr);

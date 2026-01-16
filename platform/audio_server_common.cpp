@@ -143,6 +143,10 @@ std::shared_ptr<Crypto::ED25519> AudioServer::get_sign_key() const {
     return sign_key_pair;
 }
 
+audio_info AudioServer::get_audio_info() const {
+    return audio_info_;
+}
+
 void AudioServer::cleanup_disconnected_devices() {
     while (running) {
         std::unique_lock lock(devices_mutex);

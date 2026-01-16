@@ -14,6 +14,15 @@
 
 constexpr const char* TAG = "Device";
 
+// Helper function to derive UDP audio key from TCP session key
+static std::vector<uint8_t> derive_udp_audio_key(const std::vector<uint8_t>& tcp_session_key) {
+    std::vector<uint8_t> salt = {'u','d','p','-','a','u','d','i','o'};
+    std::vector<uint8_t> info = {'s','t','r','e','a','m','-','a','u','d','i','o','-','v','1'};
+    std::vector<uint8_t> combined = salt;
+    combined.insert(combined.end(), info.begin(), info.end());
+    return Crypto::hmac_sha256(tcp_session_key, combined);
+}
+
 Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const long msg_wait_timeout)
     : server_(std::move(server)),
       config(std::move(config)),
@@ -360,30 +369,152 @@ void Device::handle_received_message(const Message& msg)
         }
     case ProtocolMagic::ECDH:
         {
-            // 处理客户端的 ECDH 请求
-            if (const auto* byte_body = dynamic_cast<ByteArrayMessageBody*>(msg.body.get()))
-            {
-                // 使用客户端公钥派生会话密钥
-                auto derived_key = server_->ecdh_key(byte_body->data);
-
-                // 保存会话密钥
-                if (derived_key.size() >= 32)
-                {
-                    std::copy(derived_key.begin(), derived_key.begin() + 32, session_key.begin());
-                    ecdh_completed = true;
-                    Logger::d(TAG, "Device [{}] ECDH completed (server side) sessionKey={}", config.name,
-                              HEX_TOOL::to_hex(session_key.data(), session_key.size()));
-                }
-                else
-                {
-                    Logger::e(TAG, "Derived shared secret too short");
-                }
-
-                // 返回服务器的公钥
-                const auto body = std::make_shared<ByteArrayMessageBody>(server_->get_ecdh_pub_key_data());
-                send_message(Message::build(ProtocolMagic::ECDH_RESPONSE, queue_num_counter.fetch_add(1), msg.id,
-                                            body));
+            // Check if client public key exists
+            if (!public_key) {
+                Logger::w(TAG, "Received ECDH without client public key");
+                return;
             }
+
+            auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
+            if (!msg_body) {
+                Logger::w(TAG, "Invalid ECDH message body");
+                return;
+            }
+
+            // Decrypt client X25519 public key using clientEd25519PublicKey.sha256()
+            auto decrypt_key = Crypto::sha256(public_key->export_public_key());
+            auto decrypted_msg_opt = msg_body->decrypt_aes256gcm(decrypt_key, nullptr);
+
+            if (!decrypted_msg_opt) {
+                Logger::w(TAG, "Failed to decrypt ECDH message");
+                return;
+            }
+
+            auto decrypted_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(
+                decrypted_msg_opt->body);
+
+            if (!decrypted_body || decrypted_body->data.size() != 32) {
+                Logger::w(TAG, "Invalid decrypted ECDH body");
+                return;
+            }
+
+            // 处理客户端的 ECDH 请求
+            // 使用客户端公钥派生会话密钥
+            auto derived_key = server_->ecdh_key(decrypted_body->data);
+
+            // 保存会话密钥
+            if (derived_key.size() >= 32)
+            {
+                std::copy(derived_key.begin(), derived_key.begin() + 32, session_key.begin());
+                ecdh_completed = true;
+                Logger::d(TAG, "Device [{}] ECDH completed (server side) sessionKey={}", config.name,
+                          HEX_TOOL::to_hex(session_key.data(), session_key.size()));
+            }
+            else
+            {
+                Logger::e(TAG, "Derived shared secret too short");
+                return;
+            }
+
+            // Encrypt server X25519 public key with clientEd25519PublicKey.sha256()
+            auto server_pub_key = server_->get_ecdh_pub_key_data();
+            auto encrypt_key = Crypto::sha256(public_key->export_public_key());
+
+            auto encrypted_body = ByteArrayMessageBody::build_aes256gcm_encrypted_body(
+                server_pub_key, encrypt_key);
+
+            // 返回服务器的公钥
+            send_message(Message::build(ProtocolMagic::ECDH_RESPONSE, queue_num_counter.fetch_add(1), msg.id,
+                                        std::make_shared<ByteArrayMessageBody>(encrypted_body)));
+            break;
+        }
+    case ProtocolMagic::PLAY:
+        {
+            // Check if ECDH is completed
+            if (!is_ecdh_completed()) {
+                Logger::w(TAG, "Received PLAY before ECDH completion");
+                send_message(Message::build(
+                    ProtocolMagic::ERROR,
+                    queue_num_counter.fetch_add(1),
+                    msg.id,
+                    std::make_shared<StringMessageBody>("ECDH not completed")
+                ));
+                return;
+            }
+
+            auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
+            if (!msg_body || msg_body->data.size() < 2) {
+                Logger::w(TAG, "Invalid PLAY message body");
+                return;
+            }
+
+            // Parse client UDP port (big-endian)
+            uint16_t client_udp_port = (static_cast<uint16_t>(msg_body->data[0]) << 8) |
+                                        static_cast<uint16_t>(msg_body->data[1]);
+
+            Logger::i(TAG, "Device [{}] requested PLAY on UDP port {}", config.name, client_udp_port);
+
+            // Derive UDP audio key
+            auto udp_key = derive_udp_audio_key(session_key);
+
+            // TODO: Create UDP socket and start audio streaming
+            // For now, just send PLAY_RESPONSE with mock data
+
+            // Build PLAY_RESPONSE with audio info
+            std::vector<uint8_t> response_body(12);
+            auto audio_info = server_->get_audio_info();
+
+            // UDP port (2 bytes) - using client port + 1 as mock server port
+            uint16_t server_udp_port = client_udp_port + 1;
+            response_body[0] = (server_udp_port >> 8) & 0xFF;
+            response_body[1] = server_udp_port & 0xFF;
+
+            // Sample rate (4 bytes)
+            response_body[2] = (audio_info.sample_rate >> 24) & 0xFF;
+            response_body[3] = (audio_info.sample_rate >> 16) & 0xFF;
+            response_body[4] = (audio_info.sample_rate >> 8) & 0xFF;
+            response_body[5] = audio_info.sample_rate & 0xFF;
+
+            // Bits (2 bytes)
+            response_body[6] = (audio_info.bits >> 8) & 0xFF;
+            response_body[7] = audio_info.bits & 0xFF;
+
+            // Channels (2 bytes)
+            response_body[8] = (audio_info.channels >> 8) & 0xFF;
+            response_body[9] = audio_info.channels & 0xFF;
+
+            // Format (2 bytes)
+            response_body[10] = (audio_info.format >> 8) & 0xFF;
+            response_body[11] = audio_info.format & 0xFF;
+
+            send_message(Message::build(
+                ProtocolMagic::PLAY_RESPONSE,
+                queue_num_counter.fetch_add(1),
+                msg.id,
+                std::make_shared<ByteArrayMessageBody>(response_body)
+            ).to_aes256gcm_encrypted_message(server_->get_sign_key(), session_key));
+
+            Logger::i(TAG, "Device [{}] PLAY_RESPONSE sent", config.name);
+            break;
+        }
+    case ProtocolMagic::STOP:
+        {
+            Logger::i(TAG, "Device [{}] requested STOP", config.name);
+
+            // TODO: Stop UDP audio streaming and cleanup resources
+
+            // Send STOP_RESPONSE with success status
+            std::vector<uint8_t> response_body(1);
+            response_body[0] = 0; // Success
+
+            send_message(Message::build(
+                ProtocolMagic::STOP_RESPONSE,
+                queue_num_counter.fetch_add(1),
+                msg.id,
+                std::make_shared<ByteArrayMessageBody>(response_body)
+            ).to_aes256gcm_encrypted_message(server_->get_sign_key(), session_key));
+
+            Logger::i(TAG, "Device [{}] STOP_RESPONSE sent", config.name);
             break;
         }
     default:
