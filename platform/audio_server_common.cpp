@@ -20,6 +20,7 @@ const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
 AudioServer::~AudioServer() {
     running = false;
+    audio_streaming = false;
     destructing = true; // 标记正在析构
 
     // 通知清理线程退出
@@ -45,6 +46,9 @@ AudioServer::~AudioServer() {
     }
     if (cleanup_thread.joinable()) {
         cleanup_thread.join();
+    }
+    if (audio_thread.joinable()) {
+        audio_thread.join();
     }
 }
 
@@ -93,13 +97,17 @@ void AudioServer::accept_device(socket_t socket, const sockaddr_storage& client_
 void AudioServer::start() {
     if (running) {
         running = false;
+        audio_streaming = false;
         cleanup_cv.notify_all();
         if (accept_thread.joinable()) accept_thread.join();
         if (cleanup_thread.joinable()) cleanup_thread.join();
+        if (audio_thread.joinable()) audio_thread.join();
     }
     running = true;
+    audio_streaming = true;
     accept_thread = std::thread(&AudioServer::accept_connections, this);
     cleanup_thread = std::thread(&AudioServer::cleanup_disconnected_devices, this);
+    audio_thread = std::thread(&AudioServer::audio_capture_loop, this);
 }
 
 void AudioServer::generate_pair_code() {
@@ -188,4 +196,35 @@ void AudioServer::cleanup_disconnected_devices() {
     }
 
     Logger::d(LOG_TAG, "Cleanup thread exiting");
+}
+
+void AudioServer::audio_capture_loop() {
+    Logger::i(LOG_TAG, "Audio capture thread started");
+
+    if (!audio_capture) {
+        Logger::e(LOG_TAG, "Audio capture object is null");
+        return;
+    }
+
+    try {
+        audio_capture->capture([this](const char* data, uint32_t length) -> bool {
+            if (!audio_streaming) {
+                return false; // Stop capturing
+            }
+
+            // Distribute audio data to all streaming devices
+            std::lock_guard<std::mutex> lock(devices_mutex);
+            for (const auto& device : devices_) {
+                if (device->is_udp_streaming()) {
+                    device->push_audio_data(reinterpret_cast<const uint8_t*>(data), length);
+                }
+            }
+
+            return true; // Continue capturing
+        });
+    } catch (const std::exception& e) {
+        Logger::e(LOG_TAG, "Exception in audio capture loop: " + std::string(e.what()));
+    }
+
+    Logger::i(LOG_TAG, "Audio capture thread ended");
 }

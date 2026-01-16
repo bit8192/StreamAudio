@@ -3,7 +3,7 @@
 //
 
 #include "qrcode_dialog.h"
-#include "tools/qrcodegen.h"
+#include "tools/qrcodegen.hpp"
 #include "logger.h"
 
 #include <QVBoxLayout>
@@ -15,7 +15,7 @@
 #include "platform_utils.h"
 
 constexpr char LOG_TAG[] = "QRCodeDialog";
-constexpr int QR_MODULE_SIZE = 8; // 每个模块的像素大小
+constexpr int QR_MODULE_SIZE = 8; // 每个模块的像素大小 (降低以适应更多内容)
 constexpr int QR_BORDER = 4; // 边框模块数
 
 QRCodeDialog::QRCodeDialog(const std::shared_ptr<AudioServer> &audio_server, QWidget *parent)
@@ -53,7 +53,7 @@ QRCodeDialog::QRCodeDialog(const std::shared_ptr<AudioServer> &audio_server, QWi
     timer_ = new QTimer(this);
     timer_->setSingleShot(true);
     timer_->setInterval(std::chrono::seconds(30));
-    connect(timer_, &QTimer::timeout, std::bind(&QRCodeDialog::expire_pair_code, this));
+    connect(timer_, &QTimer::timeout, [this] { expire_pair_code(); });
 }
 
 void QRCodeDialog::showEvent(QShowEvent *show_event) {
@@ -91,13 +91,14 @@ void QRCodeDialog::clear_pair_code() const {
 
 void QRCodeDialog::expire_pair_code() const {
     qr_label_->setText(MSG_QR_EXPIRED);
+    content_label_->clear();
     clear_pair_code();
 }
 
-void QRCodeDialog::setContent(const QString &content) {
+void QRCodeDialog::setContent(const QString &content) const
+{
     content_label_->setText(content);
-    QPixmap qrPixmap = generateQRCode(content);
-    if (!qrPixmap.isNull()) {
+    if (const QPixmap qrPixmap = generateQRCode(content); !qrPixmap.isNull()) {
         qr_label_->setPixmap(qrPixmap);
     } else {
         qr_label_->setText(MSG_QR_FAIL);
@@ -106,33 +107,35 @@ void QRCodeDialog::setContent(const QString &content) {
 
 QPixmap QRCodeDialog::generateQRCode(const QString &content) {
     try {
-        // 使用 qrcodegen 库生成二维码
-        qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(
-            content.toUtf8().constData(),
-            qrcodegen::QrCode::Ecc::MEDIUM
+        const auto data = content.toUtf8();
+        // 使用 qrcodegen 库生成二维码，降低纠错等级以减小尺寸
+        const qrcodegen::QrCode qr = qrcodegen::QrCode::encodeText(
+            data,
+            qrcodegen::QrCode::Ecc::LOW  // 使用LOW纠错等级，减小二维码尺寸
         );
+        Logger::d(LOG_TAG, "Generating QR code for content: {}", data.data());
 
-        int size = qr.getSize();
-        int imageSize = (size + QR_BORDER * 2) * QR_MODULE_SIZE;
+        const int size = qr.getSize();
+        Logger::d(LOG_TAG, "QR code matrix size: " + std::to_string(size));
 
-        // 创建图像
-        QImage image(imageSize, imageSize, QImage::Format_RGB32);
+        const int imageSize = (size + QR_BORDER * 2) * QR_MODULE_SIZE;
+        Logger::d(LOG_TAG, "Final image size: " + std::to_string(imageSize) + "x" + std::to_string(imageSize));
+
+        // 使用更高质量的图像格式
+        QImage image(imageSize, imageSize, QImage::Format_RGB16);
         image.fill(Qt::white);
 
         QPainter painter(&image);
         painter.setPen(Qt::NoPen);
         painter.setBrush(Qt::black);
 
-        // 绘制二维码模块
+        // 绘制二维码模块 - 使用fillRect获得更好的像素对齐
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 if (qr.getModule(x, y)) {
-                    painter.drawRect(
-                        (x + QR_BORDER) * QR_MODULE_SIZE,
-                        (y + QR_BORDER) * QR_MODULE_SIZE,
-                        QR_MODULE_SIZE,
-                        QR_MODULE_SIZE
-                    );
+                    int pixelX = (x + QR_BORDER) * QR_MODULE_SIZE;
+                    int pixelY = (y + QR_BORDER) * QR_MODULE_SIZE;
+                    painter.fillRect(pixelX, pixelY, QR_MODULE_SIZE, QR_MODULE_SIZE, Qt::black);
                 }
             }
         }

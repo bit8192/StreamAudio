@@ -94,6 +94,20 @@ private:
     ErrorCallback error_callback;
     std::mutex callback_mutex;
 
+    // UDP 相关
+    socket_t udp_socket;                      // UDP socket
+    struct sockaddr_storage client_udp_addr;  // 客户端 UDP 地址
+    std::atomic<bool> udp_streaming;          // UDP 流状态
+    std::thread udp_send_thread;              // UDP 发送线程
+    std::vector<uint8_t> udp_audio_key;       // UDP 音频加密密钥
+    std::atomic<uint32_t> udp_sequence_num;   // UDP 包序列号
+
+    // 音频缓冲区（线程安全）
+    std::mutex audio_buffer_mutex;
+    std::condition_variable audio_buffer_cv;
+    std::vector<uint8_t> audio_buffer;        // 音频数据缓冲区
+    bool audio_data_available;                // 是否有新音频数据
+
     // 内部方法
     static bool parse_address(const std::string& address, std::string& host, int& port);
     void listening_loop();
@@ -104,4 +118,15 @@ private:
     ssize_t socket_recv(uint8_t* buffer, size_t len) const;
     void close_socket();
     void close_connection(); // 内部方法：停止连接但不等待线程
+
+    // UDP 相关内部方法
+    void udp_send_loop();                     // UDP 发送线程主循环
+    void send_udp_packet(const uint8_t* data, size_t len);  // 发送单个 UDP 包
+    void close_udp_socket();                  // 关闭 UDP socket
+    std::vector<uint8_t> encrypt_audio_data(const std::vector<uint8_t>& plaintext);  // 加密音频数据
+
+public:
+    // UDP 音频流控制
+    void push_audio_data(const uint8_t* data, size_t len);  // 推送音频数据
+    bool is_udp_streaming() const { return udp_streaming; }  // 是否正在 UDP 流传输
 };

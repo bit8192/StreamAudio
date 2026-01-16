@@ -31,7 +31,11 @@ Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const l
       connected(false),
       ecdh_completed(false),
       message_id_counter(0),
-      queue_num_counter(0)
+      queue_num_counter(0),
+      udp_socket(INVALID_SOCKET),
+      udp_streaming(false),
+      udp_sequence_num(0),
+      audio_data_available(false)
 {
     // 加载公钥（如果配置中有）
     if (!this->config.public_key.empty())
@@ -59,13 +63,32 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
       connected(true),
       ecdh_completed(false),
       message_id_counter(0),
-      queue_num_counter(0)
+      queue_num_counter(0),
+      udp_socket(INVALID_SOCKET),
+      udp_streaming(false),
+      udp_sequence_num(0),
+      audio_data_available(false)
 {
     session_key.resize(32, 0);
 }
 
 Device::~Device()
 {
+    // Stop UDP streaming if active
+    if (udp_streaming) {
+        udp_streaming = false;
+        if (udp_send_thread.joinable()) {
+            // Wake up the UDP thread
+            {
+                std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+                audio_data_available = true;
+            }
+            audio_buffer_cv.notify_all();
+            udp_send_thread.join();
+        }
+        close_udp_socket();
+    }
+
     disconnect();
 }
 
@@ -456,16 +479,63 @@ void Device::handle_received_message(const Message& msg)
 
             // Derive UDP audio key
             auto udp_key = derive_udp_audio_key(session_key);
+            udp_audio_key = udp_key;
 
-            // TODO: Create UDP socket and start audio streaming
-            // For now, just send PLAY_RESPONSE with mock data
+            // Create UDP socket for audio streaming
+            try {
+                udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
+                if (udp_socket == INVALID_SOCKET) {
+                    throw std::runtime_error("Failed to create UDP socket");
+                }
+
+                // Parse client address from TCP connection
+                struct sockaddr_storage client_tcp_addr;
+                socklen_t addr_len = sizeof(client_tcp_addr);
+                if (getpeername(socket_fd, reinterpret_cast<struct sockaddr*>(&client_tcp_addr), &addr_len) != 0) {
+                    close_udp_socket();
+                    throw std::runtime_error("Failed to get client address");
+                }
+
+                // Set up client UDP address
+                memset(&client_udp_addr, 0, sizeof(client_udp_addr));
+                if (client_tcp_addr.ss_family == AF_INET) {
+                    struct sockaddr_in* tcp_addr = reinterpret_cast<struct sockaddr_in*>(&client_tcp_addr);
+                    struct sockaddr_in* udp_addr = reinterpret_cast<struct sockaddr_in*>(&client_udp_addr);
+                    udp_addr->sin_family = AF_INET;
+                    udp_addr->sin_addr = tcp_addr->sin_addr;  // Same IP as TCP connection
+                    udp_addr->sin_port = htons(client_udp_port);  // Client specified port
+                } else {
+                    close_udp_socket();
+                    throw std::runtime_error("IPv6 not supported yet");
+                }
+
+                // Initialize streaming state
+                udp_streaming = true;
+                udp_sequence_num = 0;
+                audio_data_available = false;
+
+                // Start UDP sending thread
+                udp_send_thread = std::thread(&Device::udp_send_loop, this);
+
+                Logger::i(TAG, "Device [{}] UDP socket created for streaming to port {}", config.name, client_udp_port);
+            }
+            catch (const std::exception& e) {
+                Logger::e(TAG, "Failed to create UDP socket: " + std::string(e.what()));
+                send_message(Message::build(
+                    ProtocolMagic::ERROR,
+                    queue_num_counter.fetch_add(1),
+                    msg.id,
+                    std::make_shared<StringMessageBody>("UDP socket creation failed: " + std::string(e.what()))
+                ));
+                return;
+            }
 
             // Build PLAY_RESPONSE with audio info
             std::vector<uint8_t> response_body(12);
             auto audio_info = server_->get_audio_info();
 
-            // UDP port (2 bytes) - using client port + 1 as mock server port
-            uint16_t server_udp_port = client_udp_port + 1;
+            // UDP port (2 bytes) - using a dynamically bound port (0 for auto-assign)
+            uint16_t server_udp_port = 0;  // Server uses client port for sending
             response_body[0] = (server_udp_port >> 8) & 0xFF;
             response_body[1] = server_udp_port & 0xFF;
 
@@ -501,7 +571,33 @@ void Device::handle_received_message(const Message& msg)
         {
             Logger::i(TAG, "Device [{}] requested STOP", config.name);
 
-            // TODO: Stop UDP audio streaming and cleanup resources
+            // Stop UDP audio streaming and cleanup resources
+            if (udp_streaming) {
+                udp_streaming = false;
+
+                // Wait for UDP send thread to finish
+                if (udp_send_thread.joinable()) {
+                    // Signal audio buffer to wake up waiting thread
+                    {
+                        std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+                        audio_data_available = true;
+                    }
+                    audio_buffer_cv.notify_all();
+                    udp_send_thread.join();
+                }
+
+                // Close UDP socket
+                close_udp_socket();
+
+                // Clear audio buffer
+                {
+                    std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+                    audio_buffer.clear();
+                    audio_data_available = false;
+                }
+
+                Logger::i(TAG, "Device [{}] UDP streaming stopped", config.name);
+            }
 
             // Send STOP_RESPONSE with success status
             std::vector<uint8_t> response_body(1);
@@ -656,4 +752,137 @@ int32_t Device::get_next_message_id()
 int32_t Device::get_next_queue_num()
 {
     return queue_num_counter.fetch_add(1);
+}
+
+// UDP related method implementations
+
+void Device::udp_send_loop()
+{
+    Logger::d(TAG, "Device [{}] UDP send thread started", config.name);
+
+    constexpr size_t MAX_UDP_PAYLOAD = 1400; // Safe UDP payload size
+    constexpr size_t AUDIO_CHUNK_SIZE = 1024; // Audio data chunk size per packet
+
+    std::vector<uint8_t> packet_buffer;
+    packet_buffer.reserve(MAX_UDP_PAYLOAD);
+
+    try {
+        while (udp_streaming) {
+            std::unique_lock<std::mutex> lock(audio_buffer_mutex);
+
+            // Wait for audio data or stop signal
+            audio_buffer_cv.wait(lock, [this] {
+                return audio_data_available || !udp_streaming;
+            });
+
+            if (!udp_streaming) {
+                break;
+            }
+
+            // Process available audio data
+            while (!audio_buffer.empty() && udp_streaming) {
+                size_t chunk_size = std::min(audio_buffer.size(), AUDIO_CHUNK_SIZE);
+
+                // Build UDP packet: [sequence_number(4)] + [encrypted_audio_data]
+                packet_buffer.clear();
+
+                // Add sequence number (big-endian)
+                uint32_t seq = udp_sequence_num.fetch_add(1);
+                packet_buffer.push_back((seq >> 24) & 0xFF);
+                packet_buffer.push_back((seq >> 16) & 0xFF);
+                packet_buffer.push_back((seq >> 8) & 0xFF);
+                packet_buffer.push_back(seq & 0xFF);
+
+                // Extract audio chunk
+                std::vector<uint8_t> audio_chunk(audio_buffer.begin(), audio_buffer.begin() + chunk_size);
+                audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + chunk_size);
+
+                // Encrypt audio data using UDP audio key
+                auto encrypted_chunk = encrypt_audio_data(audio_chunk);
+                packet_buffer.insert(packet_buffer.end(), encrypted_chunk.begin(), encrypted_chunk.end());
+
+                // Release lock before sending
+                lock.unlock();
+
+                // Send UDP packet
+                send_udp_packet(packet_buffer.data(), packet_buffer.size());
+
+                // Reacquire lock for next iteration
+                lock.lock();
+            }
+
+            if (audio_buffer.empty()) {
+                audio_data_available = false;
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        Logger::e(TAG, "Exception in UDP send loop: " + std::string(e.what()));
+    }
+
+    Logger::d(TAG, "Device [{}] UDP send thread ended", config.name);
+}
+
+std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plaintext)
+{
+    // Simple XOR encryption with UDP audio key (can be replaced with proper AES if needed)
+    std::vector<uint8_t> encrypted = plaintext;
+    for (size_t i = 0; i < encrypted.size(); ++i) {
+        encrypted[i] ^= udp_audio_key[i % udp_audio_key.size()];
+    }
+    return encrypted;
+}
+
+void Device::send_udp_packet(const uint8_t* data, size_t len)
+{
+    if (udp_socket == INVALID_SOCKET || !udp_streaming) {
+        return;
+    }
+
+    ssize_t sent = sendto(udp_socket,
+                          reinterpret_cast<const char*>(data),
+                          static_cast<int>(len),
+                          0,
+                          reinterpret_cast<const struct sockaddr*>(&client_udp_addr),
+                          sizeof(struct sockaddr_in));
+
+    if (sent < 0 || static_cast<size_t>(sent) != len) {
+        Logger::w(TAG, "Failed to send UDP packet: sent={} expected={}", sent, len);
+    }
+}
+
+void Device::close_udp_socket()
+{
+    if (udp_socket != INVALID_SOCKET) {
+#ifdef _WIN32
+        closesocket(udp_socket);
+#else
+        ::close(udp_socket);
+#endif
+        udp_socket = INVALID_SOCKET;
+        Logger::d(TAG, "Device [{}] UDP socket closed", config.name);
+    }
+}
+
+void Device::push_audio_data(const uint8_t* data, size_t len)
+{
+    if (!udp_streaming || len == 0) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+
+    // Append new audio data to buffer
+    audio_buffer.insert(audio_buffer.end(), data, data + len);
+    audio_data_available = true;
+
+    // Limit buffer size to prevent memory overflow
+    constexpr size_t MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
+    if (audio_buffer.size() > MAX_BUFFER_SIZE) {
+        size_t excess = audio_buffer.size() - MAX_BUFFER_SIZE;
+        audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + excess);
+    }
+
+    // Notify UDP send thread
+    audio_buffer_cv.notify_one();
 }

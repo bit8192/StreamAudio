@@ -37,7 +37,7 @@ add_executable(run_tests
         ../tools/string.cpp
         ../tools/string.h
         ../tools/qrcodegen.cpp
-        ../tools/qrcodegen.h
+        ../tools/qrcodegen.hpp
         ../protocol_magic.cpp
         ../protocol_magic.h
         ../message.cpp

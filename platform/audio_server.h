@@ -16,7 +16,7 @@
 #include "audio.h"
 #include "../tools/crypto.h"
 
-constexpr int PAIR_BYTE_LENGTH = 64;
+constexpr int PAIR_BYTE_LENGTH = 32;
 
 class Device;
 
@@ -34,11 +34,18 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     std::atomic<bool> destructing{false}; // 标记是否正在析构
     std::thread accept_thread; // Thread for accepting new connections
     std::thread cleanup_thread; // Thread for cleaning up disconnected devices
+
+    // Audio streaming related
+    std::unique_ptr<Audio> audio_capture;  // 音频捕获对象
+    std::thread audio_thread;              // 音频捕获线程
+    std::atomic<bool> audio_streaming;     // 音频捕获状态
+
     void accept_connections(); // Accept new TCP connections
     void cleanup_disconnected_devices(); // Clean up disconnected devices without public key
+    void audio_capture_loop(); // 音频捕获循环
 
 public:
-    AudioServer(int port, const audio_info &audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair);
+    AudioServer(int port, const audio_info &audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair, std::unique_ptr<Audio> audio);
 
     void start();
 

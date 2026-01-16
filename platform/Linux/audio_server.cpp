@@ -9,10 +9,12 @@
 
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
 
-AudioServer::AudioServer(const int port, const audio_info& audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair):
+AudioServer::AudioServer(const int port, const audio_info& audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair, std::unique_ptr<Audio> audio):
 port(port),
 sign_key_pair(std::move(sign_key_pair)),
-audio_info_(audio_info) {
+audio_info_(audio_info),
+audio_capture(std::move(audio)),
+audio_streaming(false) {
     // 1. 创建socket文件描述符
     server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server_socket < 0) throw SocketException("无法创建socket");

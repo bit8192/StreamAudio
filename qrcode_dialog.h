@@ -38,9 +38,9 @@ private:
     QTimer* timer_;
     std::shared_ptr<AudioServer> audio_server_;
 
-    void setContent(const QString& content);
+    void setContent(const QString& content) const;
 
-    QPixmap generateQRCode(const QString& content);
+    static QPixmap generateQRCode(const QString& content);
 
     void refresh();
 

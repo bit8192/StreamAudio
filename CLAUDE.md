@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.  
+项目文档除了代码和专业名词外均使用中文编写。  
+不论处于何种情况，均以中文回复或询问。
 
 ## 项目概述
 

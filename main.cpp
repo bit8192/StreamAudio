@@ -23,10 +23,10 @@ int main(int argc, char *argv[]) {
         const auto config = Config::load();
 
         // 创建音频服务器
-        auto audio = Audio();
-        const auto format = audio.get_audio_info();
+        auto audio = std::make_unique<Audio>();
+        const auto format = audio->get_audio_info();
         // 启动服务器
-        const auto server = std::make_shared<AudioServer>(config.port, audio.get_audio_info(), config.private_key);
+        const auto server = std::make_shared<AudioServer>(config.port, format, config.private_key, std::move(audio));
         server->start();
 
         Logger::i("StreamAudio 服务器已启动  version {}", VERSION_NAME);
