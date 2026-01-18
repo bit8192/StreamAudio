@@ -15,14 +15,14 @@ constexpr char LOG_TAG[] = "Config";
 const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-audio";
 const auto CONFIG_FILE_PATH = HOME_DIR / ".config" / "stream-audio" / "config.yaml";
 
-void init_server_config(ServerConfig& config)
+void init_server_config(const std::shared_ptr<Config> &config)
 {
-    config.port = STREAMAUDIO_CONFIG_DEFAULT_PORT;
-    config.private_key = Crypto::ED25519::generate();
+    config->port = STREAMAUDIO_CONFIG_DEFAULT_PORT;
+    config->private_key = Crypto::ED25519::generate();
 }
 
-ServerConfig Config::parse_config_file(const std::filesystem::path& config_path) {
-    ServerConfig config;
+std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& config_path) {
+    std::shared_ptr<Config> config = std::make_shared<Config>();
 
     if (!std::filesystem::exists(config_path)) {
         Logger::i(LOG_TAG, "配置文件不存在，使用默认配置");
@@ -35,13 +35,13 @@ ServerConfig Config::parse_config_file(const std::filesystem::path& config_path)
         YAML::Node yaml_config = YAML::LoadFile(config_path.string());
 
         if (yaml_config["port"]) {
-            config.port = yaml_config["port"].as<uint16_t>();
-            Logger::i(LOG_TAG, "读取配置: port=" + std::to_string(config.port));
+            config->port = yaml_config["port"].as<uint16_t>();
+            Logger::i(LOG_TAG, "读取配置: port=" + std::to_string(config->port));
         }
         if (yaml_config["private_key"])
         {
             const auto key_pem = yaml_config["private_key"].as<std::string>();
-            config.private_key = std::make_shared<Crypto::ED25519>(
+            config->private_key = std::make_shared<Crypto::ED25519>(
                 Crypto::ED25519::load_private_key_from_mem(
                     Base64::decode(key_pem)
                 )
@@ -50,8 +50,27 @@ ServerConfig Config::parse_config_file(const std::filesystem::path& config_path)
         }else
         {
             Logger::w(LOG_TAG, "配置文件中缺少 private_key，使用新生成的密钥, 重新生成");
-            config.private_key = Crypto::ED25519::generate();
+            config->private_key = Crypto::ED25519::generate();
             save(config);
+        }
+
+        // 解析设备列表
+        if (yaml_config["devices"] && yaml_config["devices"].IsSequence()) {
+            for (const auto& device_node : yaml_config["devices"]) {
+                DeviceConfig device;
+                if (device_node["name"]) {
+                    device.name = device_node["name"].as<std::string>();
+                }
+                if (device_node["address"]) {
+                    device.address = device_node["address"].as<std::string>();
+                }
+                if (device_node["public_key"]) {
+                    device.public_key = device_node["public_key"].as<std::string>();
+                }
+                config->devices.push_back(device);
+                Logger::i(LOG_TAG, "读取设备配置: " + device.name + " (" + device.address + ")");
+            }
+            Logger::i(LOG_TAG, "共加载 " + std::to_string(config->devices.size()) + " 个设备配置");
         }
     } catch (const YAML::Exception& e) {
         Logger::w(LOG_TAG, "解析配置文件失败: " + std::string(e.what()) + ", 使用默认配置");
@@ -62,7 +81,7 @@ ServerConfig Config::parse_config_file(const std::filesystem::path& config_path)
     return config;
 }
 
-void Config::write_config_file(const std::filesystem::path& config_path, const ServerConfig& config) {
+void Config::write_config_file(const std::filesystem::path& config_path, const std::shared_ptr<Config>& config) {
     try {
         YAML::Emitter out;
         out << YAML::BeginMap;
@@ -70,9 +89,28 @@ void Config::write_config_file(const std::filesystem::path& config_path, const S
         out << YAML::Newline;
         out << YAML::Comment("服务器端口");
         out << YAML::Key << "port";
-        out << YAML::Value << config.port;
+        out << YAML::Value << config->port;
         out << YAML::Key << "private_key";
-        out << YAML::Value << Base64::encode(config.private_key->export_private_key());
+        out << YAML::Value << Base64::encode(config->private_key->export_private_key());
+
+        // 保存设备列表
+        if (!config->devices.empty()) {
+            out << YAML::Newline;
+            out << YAML::Comment("已配置的设备列表");
+            out << YAML::Key << "devices";
+            out << YAML::Value << YAML::BeginSeq;
+            for (const auto& device : config->devices) {
+                out << YAML::BeginMap;
+                out << YAML::Key << "name" << YAML::Value << device.name;
+                out << YAML::Key << "address" << YAML::Value << device.address;
+                if (!device.public_key.empty()) {
+                    out << YAML::Key << "public_key" << YAML::Value << device.public_key;
+                }
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
+
         out << YAML::EndMap;
 
         std::ofstream file(config_path);
@@ -90,7 +128,9 @@ void Config::write_config_file(const std::filesystem::path& config_path, const S
     }
 }
 
-ServerConfig Config::load() {
+std::shared_ptr<Config> cacheConfig;
+std::shared_ptr<Config> Config::load() {
+    if (cacheConfig) return cacheConfig;
 
     // 确保配置目录存在
     if (!std::filesystem::exists(CONFIG_PATH)) {
@@ -98,7 +138,7 @@ ServerConfig Config::load() {
         Logger::i(LOG_TAG, "创建配置目录: " + CONFIG_PATH.string());
     }
 
-    ServerConfig config = parse_config_file(CONFIG_FILE_PATH);
+    std::shared_ptr<Config> config = parse_config_file(CONFIG_FILE_PATH);
 
     // 如果配置文件不存在，创建默认配置文件
     if (!std::filesystem::exists(CONFIG_FILE_PATH)) {
@@ -108,7 +148,7 @@ ServerConfig Config::load() {
     return config;
 }
 
-void Config::save(const ServerConfig& config) {
+void Config::save(const std::shared_ptr<Config>& config) {
     // 确保配置目录存在
     if (!std::filesystem::exists(CONFIG_PATH)) {
         std::filesystem::create_directories(CONFIG_PATH);

@@ -108,6 +108,70 @@ public:
 };
 
 /**
+ * 认证请求消息体
+ * 用于已配对设备的快速认证
+ */
+class AuthenticationMessageBody : public MessageBody {
+public:
+    std::vector<uint8_t> client_public_key;  // ED25519公钥(32字节)
+    int64_t timestamp;                        // Unix时间戳(毫秒)
+    std::vector<uint8_t> nonce;              // 随机数(16字节)
+    std::vector<uint8_t> signature;          // ED25519签名(64字节)
+
+    AuthenticationMessageBody() = default;
+    AuthenticationMessageBody(
+        std::vector<uint8_t> pub_key,
+        int64_t ts,
+        std::vector<uint8_t> n,
+        std::vector<uint8_t> sig
+    ) : client_public_key(std::move(pub_key)),
+        timestamp(ts),
+        nonce(std::move(n)),
+        signature(std::move(sig)) {}
+
+    [[nodiscard]] std::vector<uint8_t> to_byte_array() const override;
+    [[nodiscard]] size_t size() const override;
+
+    static std::shared_ptr<AuthenticationMessageBody> from_bytes(const uint8_t* data, size_t len);
+};
+
+/**
+ * 认证响应消息体
+ * 服务器对认证请求的响应
+ */
+class AuthenticationResponseMessageBody : public MessageBody {
+public:
+    enum Status : uint8_t {
+        SUCCESS = 0x00,
+        UNKNOWN_CLIENT = 0x01,
+        INVALID_SIGNATURE = 0x02,
+        TIMESTAMP_EXPIRED = 0x03,
+        REPLAY_ATTACK = 0x04
+    };
+
+    Status status;                            // 认证状态
+    std::string session_token;                // 会话令牌(成功时)
+    std::vector<uint8_t> server_signature;    // 服务器签名(64字节)
+    int64_t server_timestamp;                 // 服务器时间戳
+
+    AuthenticationResponseMessageBody() = default;
+    AuthenticationResponseMessageBody(
+        Status st,
+        std::string token,
+        std::vector<uint8_t> sig,
+        int64_t ts
+    ) : status(st),
+        session_token(std::move(token)),
+        server_signature(std::move(sig)),
+        server_timestamp(ts) {}
+
+    [[nodiscard]] std::vector<uint8_t> to_byte_array() const override;
+    [[nodiscard]] size_t size() const override;
+
+    static std::shared_ptr<AuthenticationResponseMessageBody> from_bytes(const uint8_t* data, size_t len);
+};
+
+/**
  * 消息结构
  * 定义网络通信的消息格式
  */

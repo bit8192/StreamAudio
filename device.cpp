@@ -372,6 +372,7 @@ void Device::handle_received_message(const Message& msg)
             const auto decrypted_data = msg_body->decrypt_aes256gcm(key);
             const auto mineKey = server_->get_sign_key()->export_public_key();
             public_key = std::make_shared<Crypto::ED25519>(Crypto::ED25519::load_public_key_from_mem(decrypted_data));
+            config.public_key = Base64::encode(public_key->export_public_key());
             Logger::d(TAG, "Device [{}] paired key, mineKey={}\tthitherKey={}",
                       config.name,
                       HEX_TOOL::to_hex(mineKey.data(), mineKey.size()),
@@ -386,6 +387,7 @@ void Device::handle_received_message(const Message& msg)
                     ByteArrayMessageBody::build_aes256gcm_encrypted_body(
                         server_->get_sign_key()->export_public_key(), key))
             ));
+            server_->save_device_config(config);
             break;
         }
     case ProtocolMagic::ECDH:
@@ -406,31 +408,13 @@ void Device::handle_received_message(const Message& msg)
 
             // Decrypt client X25519 public key using clientEd25519PublicKey.sha256()
             auto decrypt_key = Crypto::sha256(server_->get_sign_key()->export_public_key());
-            auto decrypted_msg_opt = msg_body->decrypt_aes256gcm_to_msg(decrypt_key, nullptr);
-
-            if (!decrypted_msg_opt)
-            {
-                Logger::w(TAG, "Failed to decrypt ECDH message");
-                return;
-            }
-
-            auto decrypted_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(
-                decrypted_msg_opt->body);
-
-            if (!decrypted_body || decrypted_body->data.size() != 32)
-            {
-                Logger::w(TAG, "Invalid decrypted ECDH body");
-                return;
-            }
+            auto ecdh_pubkey = msg_body->decrypt_aes256gcm(decrypt_key);
 
             // 处理客户端的 ECDH 请求
             // 使用客户端公钥派生会话密钥
-            auto derived_key = server_->ecdh_key(decrypted_body->data);
-
-            // 保存会话密钥
-            if (derived_key.size() >= 32)
+            if (const auto derived_key = server_->ecdh_key(ecdh_pubkey); derived_key.size() >= 32)
             {
-                std::copy(derived_key.begin(), derived_key.begin() + 32, session_key.begin());
+                session_key = Crypto::sha256(derived_key);
                 ecdh_completed = true;
                 Logger::d(TAG, "Device [{}] ECDH completed (server side) sessionKey={}", config.name,
                           HEX_TOOL::to_hex(session_key.data(), session_key.size()));
@@ -451,6 +435,8 @@ void Device::handle_received_message(const Message& msg)
             // 返回服务器的公钥
             send_message(Message::build(ProtocolMagic::ECDH_RESPONSE, queue_num_counter.fetch_add(1), msg.id,
                                         std::make_shared<ByteArrayMessageBody>(encrypted_body)));
+
+            Logger::d(TAG, "Device [{}] paired key: {}", config.name, HEX_TOOL::to_hex(session_key));
             break;
         }
     case ProtocolMagic::PLAY:

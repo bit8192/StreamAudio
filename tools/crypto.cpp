@@ -273,7 +273,7 @@ std::vector<uint8_t> Crypto::X25519::derive_shared_secret(const X25519 &pub_key)
 
     EVP_PKEY_CTX_free(ctx);
 
-    return sha256(shared_secret);
+    return shared_secret;
 }
 
 // 计算 HMAC-SHA256

@@ -9,6 +9,7 @@
 #include <string>
 #include <filesystem>
 
+#include "device_config.h"
 #include "tools/crypto.h"
 
 #ifdef _WIN32
@@ -19,19 +20,18 @@ const auto HOME_DIR = std::filesystem::path(std::getenv("HOME"));
 
 #define STREAMAUDIO_CONFIG_DEFAULT_PORT 8910
 
-struct ServerConfig {
-    uint16_t port = STREAMAUDIO_CONFIG_DEFAULT_PORT;  // 默认端口
-    std::shared_ptr<Crypto::ED25519> private_key; // 签名密钥对
-};
-
 class Config {
 public:
-    static ServerConfig load();
-    static void save(const ServerConfig& config);
+    uint16_t port = STREAMAUDIO_CONFIG_DEFAULT_PORT;  // 默认端口
+    std::shared_ptr<Crypto::ED25519> private_key; // 签名密钥对
+    std::vector<DeviceConfig> devices;
+
+    static std::shared_ptr<Config> load();
+    static void save(const std::shared_ptr<Config>& config);
 
 private:
-    static ServerConfig parse_config_file(const std::filesystem::path& config_path);
-    static void write_config_file(const std::filesystem::path& config_path, const ServerConfig& config);
+    static std::shared_ptr<Config> parse_config_file(const std::filesystem::path& config_path);
+    static void write_config_file(const std::filesystem::path& config_path, const std::shared_ptr<Config>& config);
 };
 
 #endif //STREAMAUDIO_CONFIG_H

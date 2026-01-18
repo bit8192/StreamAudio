@@ -110,7 +110,7 @@ std::vector<uint8_t> Message::serialize_data_section() const {
     write_int32_be(buffer, version);
     write_int32_be(buffer, queue_num);
     write_int32_be(buffer, id);
-    write_int32_be(buffer, pack_length);
+    write_int32_be(buffer, body->size());
 
     // 写入 body
     if (body && pack_length > 0) {
@@ -337,8 +337,6 @@ Message Message::resolve_message(Message msg) {
         case ProtocolMagic::PAIR_RESPONSE:
         case ProtocolMagic::ECDH:
         case ProtocolMagic::ECDH_RESPONSE:
-        case ProtocolMagic::AUTHENTICATION:
-        case ProtocolMagic::AUTHENTICATION_RESPONSE:
         case ProtocolMagic::PLAY:
         case ProtocolMagic::PLAY_RESPONSE:
         case ProtocolMagic::STOP:

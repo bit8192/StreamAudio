@@ -152,6 +152,11 @@ audio_info AudioServer::get_audio_info() const {
     return audio_info_;
 }
 
+void AudioServer::save_device_config(const DeviceConfig &device) const {
+    config->devices.push_back(device);
+    Config::save(config);
+}
+
 void AudioServer::cleanup_disconnected_devices() {
     while (running) {
         std::unique_lock lock(devices_mutex);

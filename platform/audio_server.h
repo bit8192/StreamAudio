@@ -14,13 +14,16 @@
 #include <vector>
 
 #include "audio.h"
+#include "../device_config.h"
 #include "../tools/crypto.h"
+#include "../config.h"
 
 constexpr int PAIR_BYTE_LENGTH = 32;
 
 class Device;
 
 class AudioServer final : public std::enable_shared_from_this<AudioServer> {
+    std::shared_ptr<Config> config;
     int port;
     std::string pair_code;  // 当前配对码
     std::shared_ptr<Crypto::X25519> ecdh_key_pair = std::make_shared<Crypto::X25519>(Crypto::X25519::generate());
@@ -36,7 +39,7 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     std::thread cleanup_thread; // Thread for cleaning up disconnected devices
 
     // Audio streaming related
-    std::unique_ptr<Audio> audio_capture;  // 音频捕获对象
+    std::shared_ptr<Audio> audio_capture;  // 音频捕获对象
     std::thread audio_thread;              // 音频捕获线程
     std::atomic<bool> audio_streaming;     // 音频捕获状态
 
@@ -45,7 +48,7 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     void audio_capture_loop(); // 音频捕获循环
 
 public:
-    AudioServer(int port, const audio_info &audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair, std::unique_ptr<Audio> audio);
+    AudioServer(const std::shared_ptr<Config> &config, const audio_info &audio_info, const std::shared_ptr<Audio> &audio);
 
     void start();
 
@@ -72,6 +75,8 @@ public:
     std::shared_ptr<Crypto::ED25519> get_sign_key() const;
 
     audio_info get_audio_info() const;
+
+    void save_device_config(const DeviceConfig &device) const;
 
     ~AudioServer();
 private:

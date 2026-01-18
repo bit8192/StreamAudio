@@ -8,16 +8,16 @@
 
 #include "../../exceptions.h"
 #include "../../logger.h"
-#include "../../tools/crypto.h"
 #include "../../device.h"
 
 constexpr auto AUDIO_SERVER_LOGTAG = "audio_server";
 
-AudioServer::AudioServer(const int port, const audio_info &audio_info, std::shared_ptr<Crypto::ED25519> sign_key_pair, std::unique_ptr<Audio> audio):
-port(port),
-sign_key_pair(std::move(sign_key_pair)),
+AudioServer::AudioServer(const std::shared_ptr<Config> &config, const audio_info &audio_info, const std::shared_ptr<Audio> &audio):
+config(config),
+port(config->port),
+sign_key_pair(config->private_key),
 audio_info_(audio_info),
-audio_capture(std::move(audio)),
+audio_capture(audio),
 audio_streaming(false) {
     server_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (server_socket == INVALID_SOCKET) {

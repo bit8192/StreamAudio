@@ -26,11 +26,11 @@ int main(int argc, char *argv[]) {
         auto audio = std::make_unique<Audio>();
         const auto format = audio->get_audio_info();
         // 启动服务器
-        const auto server = std::make_shared<AudioServer>(config.port, format, config.private_key, std::move(audio));
+        const auto server = std::make_shared<AudioServer>(config, format, std::move(audio));
         server->start();
 
         Logger::i(LOG_TAG,"StreamAudio 服务器已启动  version {}", VERSION_NAME);
-        Logger::i(LOG_TAG, "端口: {}", config.port);
+        Logger::i(LOG_TAG, "端口: {}", config->port);
         Logger::i(LOG_TAG, "采样率: {}", format.sample_rate);
         Logger::i(LOG_TAG, "位深度: {}", format.bits);
         Logger::i(LOG_TAG, "格式: {}", format.format);

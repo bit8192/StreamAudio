@@ -240,9 +240,9 @@ TEST(aes_256_gcm_encrypt) {
 }
 
 TEST(aes_256_gcm_decrypt) {
-    std::vector<uint8_t> encrypted_data = HEX_TOOL::hex_to_bytes("1c04480302d62f8e97a218d5d1f9542ff5fe5b6e0878df7a29503e3418cb7dbb17d96f2f9e481e14a106910a81baf6cc");
-    std::vector<uint8_t> key = HEX_TOOL::hex_to_bytes("637c1005e24cd0b3d8b73d2f6ffafd8877464d83c4a29c2a8d0fdf7a2663d481");
-    std::vector<uint8_t> iv = HEX_TOOL::hex_to_bytes("353a0110c2d9cc6e449557e2b0da5dff");
+    std::vector<uint8_t> encrypted_data = HEX_TOOL::hex_to_bytes("4e24746f795e659d4b737c97d443e21e4f3e71d6aa3d83a960bf3a310c9416b31e758e3925a9dbdfecb8fe3a854c933f");
+    std::vector<uint8_t> key = HEX_TOOL::hex_to_bytes("6757d4ac224eef549416a8cac5b76d28875e237ea39531b863f06d47c80bc209");
+    std::vector<uint8_t> iv = HEX_TOOL::hex_to_bytes("69a10108c09e2ae742f77e6c");
     const auto plaintext = Crypto::aes_256_gcm_decrypt(key, iv, encrypted_data);
     std::cout << "plaintext data: " << HEX_TOOL::to_hex(plaintext) << std::endl;
 }

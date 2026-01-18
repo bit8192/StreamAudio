@@ -19,6 +19,28 @@
 class AudioServer;
 
 /**
+ * 会话信息结构
+ * 管理设备的认证会话状态
+ */
+struct SessionInfo {
+    std::chrono::steady_clock::time_point created_at;      // 会话创建时间
+    std::chrono::steady_clock::time_point last_active;     // 最后活跃时间
+    std::string session_token;                              // 会话令牌
+    uint32_t message_sequence;                              // 消息序列号（用于防重放）
+    uint32_t last_received_sequence;                        // 最后接收的序列号
+    bool authenticated;                                     // 是否已认证
+    bool paired;                                            // 是否已配对
+
+    SessionInfo() :
+        created_at(std::chrono::steady_clock::now()),
+        last_active(std::chrono::steady_clock::now()),
+        message_sequence(0),
+        last_received_sequence(0),
+        authenticated(false),
+        paired(false) {}
+};
+
+/**
  * 设备客户端类
  * 管理与服务器的连接、认证和消息通信
  */
