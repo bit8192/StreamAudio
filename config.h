@@ -28,12 +28,10 @@ class Config {
 public:
     static ServerConfig load();
     static void save(const ServerConfig& config);
-    static std::filesystem::path get_config_file_path();
 
 private:
     static ServerConfig parse_config_file(const std::filesystem::path& config_path);
     static void write_config_file(const std::filesystem::path& config_path, const ServerConfig& config);
-    static std::filesystem::path get_config_directory();
 };
 
 #endif //STREAMAUDIO_CONFIG_H

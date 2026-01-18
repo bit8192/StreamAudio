@@ -27,7 +27,6 @@ audio_streaming(false) {
 
     // 3. 绑定socket到地址和端口
     if (bind(server_socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)) < 0) {
-        close(server_socket);
         throw SocketException("绑定失败");
     }
 

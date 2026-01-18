@@ -12,15 +12,8 @@
 #include "tools/base64.h"
 
 constexpr char LOG_TAG[] = "Config";
-
-// 平台相关：返回配置目录路径
-std::filesystem::path Config::get_config_directory() {
-    return HOME_DIR / ".config" / "stream-sound";
-}
-
-std::filesystem::path Config::get_config_file_path() {
-    return get_config_directory() / "config.yaml";
-}
+const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-audio";
+const auto CONFIG_FILE_PATH = HOME_DIR / ".config" / "stream-audio" / "config.yaml";
 
 void init_server_config(ServerConfig& config)
 {
@@ -78,6 +71,8 @@ void Config::write_config_file(const std::filesystem::path& config_path, const S
         out << YAML::Comment("服务器端口");
         out << YAML::Key << "port";
         out << YAML::Value << config.port;
+        out << YAML::Key << "private_key";
+        out << YAML::Value << Base64::encode(config.private_key->export_private_key());
         out << YAML::EndMap;
 
         std::ofstream file(config_path);
@@ -96,33 +91,28 @@ void Config::write_config_file(const std::filesystem::path& config_path, const S
 }
 
 ServerConfig Config::load() {
-    const auto config_dir = get_config_directory();
-    const auto config_path = get_config_file_path();
 
     // 确保配置目录存在
-    if (!std::filesystem::exists(config_dir)) {
-        std::filesystem::create_directories(config_dir);
-        Logger::i(LOG_TAG, "创建配置目录: " + config_dir.string());
+    if (!std::filesystem::exists(CONFIG_PATH)) {
+        std::filesystem::create_directories(CONFIG_PATH);
+        Logger::i(LOG_TAG, "创建配置目录: " + CONFIG_PATH.string());
     }
 
-    ServerConfig config = parse_config_file(config_path);
+    ServerConfig config = parse_config_file(CONFIG_FILE_PATH);
 
     // 如果配置文件不存在，创建默认配置文件
-    if (!std::filesystem::exists(config_path)) {
-        write_config_file(config_path, config);
+    if (!std::filesystem::exists(CONFIG_FILE_PATH)) {
+        write_config_file(CONFIG_FILE_PATH, config);
     }
 
     return config;
 }
 
 void Config::save(const ServerConfig& config) {
-    const auto config_dir = get_config_directory();
-    const auto config_path = get_config_file_path();
-
     // 确保配置目录存在
-    if (!std::filesystem::exists(config_dir)) {
-        std::filesystem::create_directories(config_dir);
+    if (!std::filesystem::exists(CONFIG_PATH)) {
+        std::filesystem::create_directories(CONFIG_PATH);
     }
 
-    write_config_file(config_path, config);
+    write_config_file(CONFIG_FILE_PATH, config);
 }

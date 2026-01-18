@@ -14,9 +14,6 @@
 #include "../tools/base64.h"
 
 constexpr char LOG_TAG[] = "audio_server_common";
-const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-sound";
-const auto SIGN_KEY_FILE = CONFIG_PATH / "sign-key.pem";
-const auto AUTHENTICATED_FILE = CONFIG_PATH / ".authenticated";
 
 AudioServer::~AudioServer() {
     running = false;

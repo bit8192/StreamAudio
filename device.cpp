@@ -14,10 +14,11 @@
 #undef ERROR
 #endif
 
-constexpr const char *TAG = "Device";
+constexpr const char* TAG = "Device";
 
 // Helper function to derive UDP audio key from TCP session key
-static std::vector<uint8_t> derive_udp_audio_key(const std::vector<uint8_t> &tcp_session_key) {
+static std::vector<uint8_t> derive_udp_audio_key(const std::vector<uint8_t>& tcp_session_key)
+{
     std::vector<uint8_t> salt = {'u', 'd', 'p', '-', 'a', 'u', 'd', 'i', 'o'};
     std::vector<uint8_t> info = {'s', 't', 'r', 'e', 'a', 'm', '-', 'a', 'u', 'd', 'i', 'o', '-', 'v', '1'};
     std::vector<uint8_t> combined = salt;
@@ -37,14 +38,19 @@ Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const l
       udp_socket(INVALID_SOCKET),
       udp_streaming(false),
       udp_sequence_num(0),
-      audio_data_available(false) {
+      audio_data_available(false)
+{
     // 加载公钥（如果配置中有）
-    if (!this->config.public_key.empty()) {
-        try {
+    if (!this->config.public_key.empty())
+    {
+        try
+        {
             auto key_data = Base64::decode(this->config.public_key);
             public_key = std::make_shared<Crypto::ED25519>(
                 Crypto::ED25519::load_public_key_from_mem(Base64::decode(config.public_key)));
-        } catch (const std::exception &e) {
+        }
+        catch (const std::exception& e)
+        {
             Logger::w(TAG, "Failed to load public key: " + std::string(e.what()));
         }
     }
@@ -64,15 +70,19 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
       udp_socket(INVALID_SOCKET),
       udp_streaming(false),
       udp_sequence_num(0),
-      audio_data_available(false) {
+      audio_data_available(false)
+{
     session_key.resize(32, 0);
 }
 
-Device::~Device() {
+Device::~Device()
+{
     // Stop UDP streaming if active
-    if (udp_streaming) {
+    if (udp_streaming)
+    {
         udp_streaming = false;
-        if (udp_send_thread.joinable()) {
+        if (udp_send_thread.joinable())
+        {
             // Wake up the UDP thread
             {
                 std::lock_guard<std::mutex> lock(audio_buffer_mutex);
@@ -87,17 +97,24 @@ Device::~Device() {
     disconnect();
 }
 
-bool Device::parse_address(const std::string &address, std::string &host, int &port) {
+bool Device::parse_address(const std::string& address, std::string& host, int& port)
+{
     if (address.empty()) return false;
     auto colon_pos = address.find(':');
-    if (colon_pos == std::string::npos) {
+    if (colon_pos == std::string::npos)
+    {
         host = address;
         port = STREAMAUDIO_CONFIG_DEFAULT_PORT; // 默认端口
-    } else {
+    }
+    else
+    {
         host = address.substr(0, colon_pos);
-        try {
+        try
+        {
             port = std::stoi(address.substr(colon_pos + 1));
-        } catch (...) {
+        }
+        catch (...)
+        {
             Logger::w(TAG, "invalid device port: " + address);
             port = STREAMAUDIO_CONFIG_DEFAULT_PORT;
         }
@@ -105,8 +122,10 @@ bool Device::parse_address(const std::string &address, std::string &host, int &p
     return true;
 }
 
-void Device::connect() {
-    if (connected) {
+void Device::connect()
+{
+    if (connected)
+    {
         Logger::w(TAG, "Device [" + config.name + "] already connected, disconnecting first");
         disconnect();
     }
@@ -119,7 +138,8 @@ void Device::connect() {
 
     // 创建 socket
     socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_fd == INVALID_SOCKET) {
+    if (socket_fd == INVALID_SOCKET)
+    {
         throw std::runtime_error("Failed to create socket");
     }
 
@@ -131,14 +151,16 @@ void Device::connect() {
 #ifdef _WIN32
     server_addr.sin_addr.s_addr = inet_addr(host.c_str());
 #else
-    if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0)
+    {
         close_socket();
         throw std::runtime_error("Invalid address: " + host);
     }
 #endif
 
     // 连接
-    if (::connect(socket_fd, reinterpret_cast<struct sockaddr *>(&server_addr), sizeof(server_addr)) < 0) {
+    if (::connect(socket_fd, reinterpret_cast<struct sockaddr*>(&server_addr), sizeof(server_addr)) < 0)
+    {
         close_socket();
         throw std::runtime_error("Failed to connect to " + host + ":" + std::to_string(port));
     }
@@ -148,9 +170,11 @@ void Device::connect() {
     start_listening();
 }
 
-void Device::close_connection() {
+void Device::close_connection()
+{
     // 只停止连接，不等待线程（用于从 listening_loop 内部调用）
-    if (connected) {
+    if (connected)
+    {
         connected = false;
         close_socket();
 
@@ -159,21 +183,26 @@ void Device::close_connection() {
     }
 }
 
-void Device::disconnect() {
-    if (connected) {
+void Device::disconnect()
+{
+    if (connected)
+    {
         close_connection();
     }
 
     // 等待监听线程结束（只有在外部调用时才 join）
-    if (listen_thread.joinable()) {
+    if (listen_thread.joinable())
+    {
         listen_thread.join();
     }
 
     Logger::d(TAG, "Device [" + config.name + "] disconnected");
 }
 
-void Device::close_socket() {
-    if (socket_fd != INVALID_SOCKET) {
+void Device::close_socket()
+{
+    if (socket_fd != INVALID_SOCKET)
+    {
 #ifdef _WIN32
         closesocket(socket_fd);
 #else
@@ -183,81 +212,107 @@ void Device::close_socket() {
     }
 }
 
-bool Device::is_connected() const {
+bool Device::is_connected() const
+{
     return connected && socket_fd != INVALID_SOCKET;
 }
 
-void Device::start_listening() {
+void Device::start_listening()
+{
     connected = true;
     // 启动监听线程
     listen_thread = std::thread(&Device::listening_loop, this);
 }
 
-void Device::check_connection() const {
-    if (!is_connected()) {
+void Device::check_connection() const
+{
+    if (!is_connected())
+    {
         throw std::runtime_error("Device [" + config.name + "] not connected");
     }
 }
 
-ssize_t Device::socket_send(const uint8_t *data, size_t len) const {
+ssize_t Device::socket_send(const uint8_t* data, size_t len) const
+{
 #ifdef _WIN32
-    return ::send(socket_fd, reinterpret_cast<const char *>(data), static_cast<int>(len), 0);
+    return ::send(socket_fd, reinterpret_cast<const char*>(data), static_cast<int>(len), 0);
 #else
     return ::send(socket_fd, data, len, 0);
 #endif
 }
 
-ssize_t Device::socket_recv(uint8_t *buffer, size_t len) const {
+ssize_t Device::socket_recv(uint8_t* buffer, size_t len) const
+{
 #ifdef _WIN32
-    return ::recv(socket_fd, reinterpret_cast<char *>(buffer), static_cast<int>(len), 0);
+    return ::recv(socket_fd, reinterpret_cast<char*>(buffer), static_cast<int>(len), 0);
 #else
     return ::recv(socket_fd, buffer, len, 0);
 #endif
 }
 
-void Device::listening_loop() {
+void Device::listening_loop()
+{
     std::vector<uint8_t> buffer;
     buffer.resize(2048);
 
-    try {
+    try
+    {
         size_t offset = 0;
-        while (connected) {
+        while (connected)
+        {
             const ssize_t bytes_read = socket_recv(buffer.data() + offset, buffer.size() - offset);
 
-            if (bytes_read <= 0) {
+            if (bytes_read <= 0)
+            {
                 // 连接断开或出错
-                if (bytes_read < 0) {
+                if (bytes_read < 0)
+                {
                     Logger::e(TAG, "Socket read error for device [" + config.name + "]");
-                } else {
+                }
+                else
+                {
                     Logger::i(TAG, "Connection closed for device [" + config.name + "]");
                 }
                 break;
             }
 
+            Logger::d(TAG, "Read " + std::to_string(bytes_read) + " bytes from device [" + config.name + "]");
             // 解析消息
             size_t read_offset = 0;
-            while (read_offset < offset + bytes_read) {
+            while (read_offset < offset + bytes_read)
+            {
                 size_t bytes_consumed = 0;
 
                 if (auto msg_opt = Message::parse(buffer.data() + offset, bytes_read + offset - read_offset,
-                                                  bytes_consumed, public_key)) {
+                                                  bytes_consumed, public_key))
+                {
                     handle_received_message(*msg_opt);
                     offset += bytes_consumed;
                 }
+                else
+                {
+                    break;
+                }
             }
 
-            if (read_offset < offset + bytes_read) {
-                size_t &&remaining = offset + bytes_read - read_offset;
+            if (read_offset < offset + bytes_read)
+            {
+                size_t&& remaining = offset + bytes_read - read_offset;
                 memcpy(buffer.data(), buffer.data() + read_offset, read_offset);
                 offset = remaining;
-            } else {
+            }
+            else
+            {
                 offset = 0;
             }
         }
-    } catch (const std::exception &e) {
+    }
+    catch (const std::exception& e)
+    {
         Logger::e(TAG, "Exception in listening loop: " + std::string(e.what()));
         std::lock_guard<std::mutex> lock(callback_mutex);
-        if (error_callback) {
+        if (error_callback)
+        {
             error_callback(e.what());
         }
     }
@@ -268,18 +323,23 @@ void Device::listening_loop() {
     Logger::d(TAG, "Device [" + config.name + "] listening loop ended");
 }
 
-void Device::handle_received_message(const Message &msg) {
+void Device::handle_received_message(const Message& msg)
+{
     Logger::d(TAG, "Received message: magic=" + std::string(to_string(msg.magic)) +
-                   " id=" + std::to_string(msg.id));
+              " id=" + std::to_string(msg.id));
 
-    switch (msg.magic) {
-        case ProtocolMagic::ENCRYPTED: {
-            if (!is_ecdh_completed()) {
+    switch (msg.magic)
+    {
+    case ProtocolMagic::ENCRYPTED:
+        {
+            if (!is_ecdh_completed())
+            {
                 Logger::w(TAG, "Received ENCRYPTED message before ECDH completion, ignoring");
                 return;
             }
             const auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
-            if (!msg_body) {
+            if (!msg_body)
+            {
                 Logger::w(TAG, "Invalid ENCRYPTED message body");
                 return;
             }
@@ -287,28 +347,34 @@ void Device::handle_received_message(const Message &msg) {
                 session_key,
                 public_key
             );
-            if (decrypted_msg_opt) {
+            if (decrypted_msg_opt)
+            {
                 return handle_received_message(*decrypted_msg_opt);
             }
             Logger::w(TAG, "ENCRYPTED message parse failed.");
             return;
         }
-        case ProtocolMagic::PAIR: {
-            if (server_->get_pair_code().empty()) {
+    case ProtocolMagic::PAIR:
+        {
+            if (server_->get_pair_code().empty())
+            {
                 Logger::w(TAG, "Received PAIR message but server has no active pair code, ignoring");
                 return;
             }
             const auto pair_code = server_->get_pair_code();
             auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
-            if (!msg_body) {
+            if (!msg_body)
+            {
                 Logger::w(TAG, "Invalid PAIR message body");
                 return;
             }
             auto key = Crypto::sha256(Base64::decode(pair_code));
             const auto decrypted_data = msg_body->decrypt_aes256gcm(key);
+            const auto mineKey = server_->get_sign_key()->export_public_key();
             public_key = std::make_shared<Crypto::ED25519>(Crypto::ED25519::load_public_key_from_mem(decrypted_data));
-            Logger::d(TAG, "Device [{}] paired key, publicKey={}",
+            Logger::d(TAG, "Device [{}] paired key, mineKey={}\tthitherKey={}",
                       config.name,
+                      HEX_TOOL::to_hex(mineKey.data(), mineKey.size()),
                       HEX_TOOL::to_hex(public_key->export_public_key().data(), public_key->export_public_key().size())
             );
             key = Crypto::sha256(public_key->export_public_key());
@@ -322,24 +388,28 @@ void Device::handle_received_message(const Message &msg) {
             ));
             break;
         }
-        case ProtocolMagic::ECDH: {
+    case ProtocolMagic::ECDH:
+        {
             // Check if client public key exists
-            if (!public_key) {
+            if (!public_key)
+            {
                 Logger::w(TAG, "Received ECDH without client public key");
                 return;
             }
 
             auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
-            if (!msg_body) {
+            if (!msg_body)
+            {
                 Logger::w(TAG, "Invalid ECDH message body");
                 return;
             }
 
             // Decrypt client X25519 public key using clientEd25519PublicKey.sha256()
-            auto decrypt_key = Crypto::sha256(public_key->export_public_key());
+            auto decrypt_key = Crypto::sha256(server_->get_sign_key()->export_public_key());
             auto decrypted_msg_opt = msg_body->decrypt_aes256gcm_to_msg(decrypt_key, nullptr);
 
-            if (!decrypted_msg_opt) {
+            if (!decrypted_msg_opt)
+            {
                 Logger::w(TAG, "Failed to decrypt ECDH message");
                 return;
             }
@@ -347,7 +417,8 @@ void Device::handle_received_message(const Message &msg) {
             auto decrypted_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(
                 decrypted_msg_opt->body);
 
-            if (!decrypted_body || decrypted_body->data.size() != 32) {
+            if (!decrypted_body || decrypted_body->data.size() != 32)
+            {
                 Logger::w(TAG, "Invalid decrypted ECDH body");
                 return;
             }
@@ -357,12 +428,15 @@ void Device::handle_received_message(const Message &msg) {
             auto derived_key = server_->ecdh_key(decrypted_body->data);
 
             // 保存会话密钥
-            if (derived_key.size() >= 32) {
+            if (derived_key.size() >= 32)
+            {
                 std::copy(derived_key.begin(), derived_key.begin() + 32, session_key.begin());
                 ecdh_completed = true;
                 Logger::d(TAG, "Device [{}] ECDH completed (server side) sessionKey={}", config.name,
                           HEX_TOOL::to_hex(session_key.data(), session_key.size()));
-            } else {
+            }
+            else
+            {
                 Logger::e(TAG, "Derived shared secret too short");
                 return;
             }
@@ -379,9 +453,11 @@ void Device::handle_received_message(const Message &msg) {
                                         std::make_shared<ByteArrayMessageBody>(encrypted_body)));
             break;
         }
-        case ProtocolMagic::PLAY: {
+    case ProtocolMagic::PLAY:
+        {
             // Check if ECDH is completed
-            if (!is_ecdh_completed()) {
+            if (!is_ecdh_completed())
+            {
                 Logger::w(TAG, "Received PLAY before ECDH completion");
                 send_message(Message::build(
                     ProtocolMagic::ERROR,
@@ -393,14 +469,15 @@ void Device::handle_received_message(const Message &msg) {
             }
 
             auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
-            if (!msg_body || msg_body->data.size() < 2) {
+            if (!msg_body || msg_body->data.size() < 2)
+            {
                 Logger::w(TAG, "Invalid PLAY message body");
                 return;
             }
 
             // Parse client UDP port (big-endian)
             uint16_t client_udp_port = (static_cast<uint16_t>(msg_body->data[0]) << 8) |
-                                       static_cast<uint16_t>(msg_body->data[1]);
+                static_cast<uint16_t>(msg_body->data[1]);
 
             Logger::i(TAG, "Device [{}] requested PLAY on UDP port {}", config.name, client_udp_port);
 
@@ -409,29 +486,35 @@ void Device::handle_received_message(const Message &msg) {
             udp_audio_key = udp_key;
 
             // Create UDP socket for audio streaming
-            try {
+            try
+            {
                 udp_socket = socket(AF_INET, SOCK_DGRAM, 0);
-                if (udp_socket == INVALID_SOCKET) {
+                if (udp_socket == INVALID_SOCKET)
+                {
                     throw std::runtime_error("Failed to create UDP socket");
                 }
 
                 // Parse client address from TCP connection
                 struct sockaddr_storage client_tcp_addr;
                 socklen_t addr_len = sizeof(client_tcp_addr);
-                if (getpeername(socket_fd, reinterpret_cast<struct sockaddr *>(&client_tcp_addr), &addr_len) != 0) {
+                if (getpeername(socket_fd, reinterpret_cast<struct sockaddr*>(&client_tcp_addr), &addr_len) != 0)
+                {
                     close_udp_socket();
                     throw std::runtime_error("Failed to get client address");
                 }
 
                 // Set up client UDP address
                 memset(&client_udp_addr, 0, sizeof(client_udp_addr));
-                if (client_tcp_addr.ss_family == AF_INET) {
-                    struct sockaddr_in *tcp_addr = reinterpret_cast<struct sockaddr_in *>(&client_tcp_addr);
-                    struct sockaddr_in *udp_addr = reinterpret_cast<struct sockaddr_in *>(&client_udp_addr);
+                if (client_tcp_addr.ss_family == AF_INET)
+                {
+                    struct sockaddr_in* tcp_addr = reinterpret_cast<struct sockaddr_in*>(&client_tcp_addr);
+                    struct sockaddr_in* udp_addr = reinterpret_cast<struct sockaddr_in*>(&client_udp_addr);
                     udp_addr->sin_family = AF_INET;
                     udp_addr->sin_addr = tcp_addr->sin_addr; // Same IP as TCP connection
                     udp_addr->sin_port = htons(client_udp_port); // Client specified port
-                } else {
+                }
+                else
+                {
                     close_udp_socket();
                     throw std::runtime_error("IPv6 not supported yet");
                 }
@@ -445,7 +528,9 @@ void Device::handle_received_message(const Message &msg) {
                 udp_send_thread = std::thread(&Device::udp_send_loop, this);
 
                 Logger::i(TAG, "Device [{}] UDP socket created for streaming to port {}", config.name, client_udp_port);
-            } catch (const std::exception &e) {
+            }
+            catch (const std::exception& e)
+            {
                 Logger::e(TAG, "Failed to create UDP socket: " + std::string(e.what()));
                 send_message(Message::build(
                     ProtocolMagic::ERROR,
@@ -493,15 +578,18 @@ void Device::handle_received_message(const Message &msg) {
             Logger::i(TAG, "Device [{}] PLAY_RESPONSE sent", config.name);
             break;
         }
-        case ProtocolMagic::STOP: {
+    case ProtocolMagic::STOP:
+        {
             Logger::i(TAG, "Device [{}] requested STOP", config.name);
 
             // Stop UDP audio streaming and cleanup resources
-            if (udp_streaming) {
+            if (udp_streaming)
+            {
                 udp_streaming = false;
 
                 // Wait for UDP send thread to finish
-                if (udp_send_thread.joinable()) {
+                if (udp_send_thread.joinable())
+                {
                     // Signal audio buffer to wake up waiting thread
                     {
                         std::lock_guard<std::mutex> lock(audio_buffer_mutex);
@@ -538,7 +626,8 @@ void Device::handle_received_message(const Message &msg) {
             Logger::i(TAG, "Device [{}] STOP_RESPONSE sent", config.name);
             break;
         }
-        default: {
+    default:
+        {
             // 将消息加入链表
             {
                 std::lock_guard lock(message_queue_mutex);
@@ -548,7 +637,8 @@ void Device::handle_received_message(const Message &msg) {
 
             // 调用回调
             std::lock_guard lock(callback_mutex);
-            if (message_callback) {
+            if (message_callback)
+            {
                 message_callback(msg);
             }
             break;
@@ -556,39 +646,47 @@ void Device::handle_received_message(const Message &msg) {
     }
 }
 
-void Device::send_message(const Message &msg) {
+void Device::send_message(const Message& msg)
+{
     check_connection();
 
     const auto data = msg.serialize(server_->get_sign_key());
     ssize_t sent = socket_send(data.data(), data.size());
 
-    if (sent < 0 || static_cast<size_t>(sent) != data.size()) {
+    if (sent < 0 || static_cast<size_t>(sent) != data.size())
+    {
         throw std::runtime_error("Failed to send message");
     }
 
     Logger::d(TAG, "Sent message: magic=" + std::string(to_string(msg.magic)) +
-                   " id=" + std::to_string(msg.id) + "\tdata=" + HEX_TOOL::to_hex(data.data(), data.size()));
+              " id=" + std::to_string(msg.id) + "\tdata=" + HEX_TOOL::to_hex(data.data(), data.size()));
 }
 
-void Device::set_message_callback(MessageCallback callback) {
+void Device::set_message_callback(MessageCallback callback)
+{
     std::lock_guard<std::mutex> lock(callback_mutex);
     message_callback = std::move(callback);
 }
 
-void Device::set_error_callback(ErrorCallback callback) {
+void Device::set_error_callback(ErrorCallback callback)
+{
     std::lock_guard<std::mutex> lock(callback_mutex);
     error_callback = std::move(callback);
 }
 
-std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg_id, long timeout_ms) {
+std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg_id, long timeout_ms)
+{
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
 
     std::unique_lock<std::mutex> lock(message_queue_mutex);
 
-    while (true) {
+    while (true)
+    {
         // 使用迭代器遍历链表，找到匹配的消息直接删除
-        for (auto it = received_messages.begin(); it != received_messages.end(); ++it) {
-            if (it->magic == magic && it->id == msg_id) {
+        for (auto it = received_messages.begin(); it != received_messages.end(); ++it)
+        {
+            if (it->magic == magic && it->id == msg_id)
+            {
                 Message result = *it;
                 received_messages.erase(it); // O(1) 删除
                 return result;
@@ -596,15 +694,17 @@ std::optional<Message> Device::wait_for_message(ProtocolMagic magic, int32_t msg
         }
 
         // 等待新消息或超时
-        if (message_cv.wait_until(lock, deadline) == std::cv_status::timeout) {
+        if (message_cv.wait_until(lock, deadline) == std::cv_status::timeout)
+        {
             Logger::w(TAG, "Timeout waiting for message: magic=" + std::string(to_string(magic)) +
-                           " id=" + std::to_string(msg_id));
+                      " id=" + std::to_string(msg_id));
             return std::nullopt;
         }
     }
 }
 
-void Device::ecdh(const Crypto::X25519 &key_pair) {
+void Device::ecdh(const Crypto::X25519& key_pair)
+{
     check_connection();
 
     // 构建 ECDH 消息
@@ -619,45 +719,58 @@ void Device::ecdh(const Crypto::X25519 &key_pair) {
 
     // 等待响应
     auto response = wait_for_message(ProtocolMagic::ECDH_RESPONSE, msg_id, msg_wait_timeout);
-    if (!response) {
+    if (!response)
+    {
         throw std::runtime_error("Device [" + config.name + "] ECDH: no response received");
     }
 
     // 解析响应
-    if (auto *byte_body = dynamic_cast<ByteArrayMessageBody *>(response->body.get())) {
-        if (byte_body->data.size() == 32) {
+    if (auto* byte_body = dynamic_cast<ByteArrayMessageBody*>(response->body.get()))
+    {
+        if (byte_body->data.size() == 32)
+        {
             // 加载服务器公钥并派生共享密钥
             auto server_public_key = Crypto::X25519::load_public_key_from_mem(byte_body->data);
             std::vector<uint8_t> salt; // 空盐值
             auto shared_secret = key_pair.derive_shared_secret(server_public_key);
 
             // 复制到会话密钥
-            if (shared_secret.size() >= 32) {
+            if (shared_secret.size() >= 32)
+            {
                 std::copy(shared_secret.begin(), shared_secret.begin() + 32, session_key.begin());
                 ecdh_completed = true;
                 Logger::d(TAG, "Device [" + config.name + "] ECDH success");
-            } else {
+            }
+            else
+            {
                 throw std::runtime_error("Derived shared secret too short");
             }
-        } else {
+        }
+        else
+        {
             throw std::runtime_error("Invalid ECDH response: incorrect key size");
         }
-    } else {
+    }
+    else
+    {
         throw std::runtime_error("Invalid ECDH response: wrong body type");
     }
 }
 
-int32_t Device::get_next_message_id() {
+int32_t Device::get_next_message_id()
+{
     return message_id_counter.fetch_add(1);
 }
 
-int32_t Device::get_next_queue_num() {
+int32_t Device::get_next_queue_num()
+{
     return queue_num_counter.fetch_add(1);
 }
 
 // UDP related method implementations
 
-void Device::udp_send_loop() {
+void Device::udp_send_loop()
+{
     Logger::d(TAG, "Device [{}] UDP send thread started", config.name);
 
     constexpr size_t MAX_UDP_PAYLOAD = 1400; // Safe UDP payload size
@@ -666,21 +779,26 @@ void Device::udp_send_loop() {
     std::vector<uint8_t> packet_buffer;
     packet_buffer.reserve(MAX_UDP_PAYLOAD);
 
-    try {
-        while (udp_streaming) {
+    try
+    {
+        while (udp_streaming)
+        {
             std::unique_lock<std::mutex> lock(audio_buffer_mutex);
 
             // Wait for audio data or stop signal
-            audio_buffer_cv.wait(lock, [this] {
+            audio_buffer_cv.wait(lock, [this]
+            {
                 return audio_data_available || !udp_streaming;
             });
 
-            if (!udp_streaming) {
+            if (!udp_streaming)
+            {
                 break;
             }
 
             // Process available audio data
-            while (!audio_buffer.empty() && udp_streaming) {
+            while (!audio_buffer.empty() && udp_streaming)
+            {
                 size_t chunk_size = std::min(audio_buffer.size(), AUDIO_CHUNK_SIZE);
 
                 // Build UDP packet: [sequence_number(4)] + [encrypted_audio_data]
@@ -711,45 +829,55 @@ void Device::udp_send_loop() {
                 lock.lock();
             }
 
-            if (audio_buffer.empty()) {
+            if (audio_buffer.empty())
+            {
                 audio_data_available = false;
             }
         }
-    } catch (const std::exception &e) {
+    }
+    catch (const std::exception& e)
+    {
         Logger::e(TAG, "Exception in UDP send loop: " + std::string(e.what()));
     }
 
     Logger::d(TAG, "Device [{}] UDP send thread ended", config.name);
 }
 
-std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t> &plaintext) {
+std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plaintext)
+{
     // Simple XOR encryption with UDP audio key (can be replaced with proper AES if needed)
     std::vector<uint8_t> encrypted = plaintext;
-    for (size_t i = 0; i < encrypted.size(); ++i) {
+    for (size_t i = 0; i < encrypted.size(); ++i)
+    {
         encrypted[i] ^= udp_audio_key[i % udp_audio_key.size()];
     }
     return encrypted;
 }
 
-void Device::send_udp_packet(const uint8_t *data, size_t len) {
-    if (udp_socket == INVALID_SOCKET || !udp_streaming) {
+void Device::send_udp_packet(const uint8_t* data, size_t len)
+{
+    if (udp_socket == INVALID_SOCKET || !udp_streaming)
+    {
         return;
     }
 
     ssize_t sent = sendto(udp_socket,
-                          reinterpret_cast<const char *>(data),
+                          reinterpret_cast<const char*>(data),
                           static_cast<int>(len),
                           0,
-                          reinterpret_cast<const struct sockaddr *>(&client_udp_addr),
+                          reinterpret_cast<const struct sockaddr*>(&client_udp_addr),
                           sizeof(struct sockaddr_in));
 
-    if (sent < 0 || static_cast<size_t>(sent) != len) {
+    if (sent < 0 || static_cast<size_t>(sent) != len)
+    {
         Logger::w(TAG, "Failed to send UDP packet: sent={} expected={}", sent, len);
     }
 }
 
-void Device::close_udp_socket() {
-    if (udp_socket != INVALID_SOCKET) {
+void Device::close_udp_socket()
+{
+    if (udp_socket != INVALID_SOCKET)
+    {
 #ifdef _WIN32
         closesocket(udp_socket);
 #else
@@ -760,8 +888,10 @@ void Device::close_udp_socket() {
     }
 }
 
-void Device::push_audio_data(const uint8_t *data, size_t len) {
-    if (!udp_streaming || len == 0) {
+void Device::push_audio_data(const uint8_t* data, size_t len)
+{
+    if (!udp_streaming || len == 0)
+    {
         return;
     }
 
@@ -773,7 +903,8 @@ void Device::push_audio_data(const uint8_t *data, size_t len) {
 
     // Limit buffer size to prevent memory overflow
     constexpr size_t MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
-    if (audio_buffer.size() > MAX_BUFFER_SIZE) {
+    if (audio_buffer.size() > MAX_BUFFER_SIZE)
+    {
         size_t excess = audio_buffer.size() - MAX_BUFFER_SIZE;
         audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + excess);
     }
