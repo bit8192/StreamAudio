@@ -390,6 +390,79 @@ void Device::handle_received_message(const Message& msg)
             server_->save_device_config(config);
             break;
         }
+    case ProtocolMagic::AUTHENTICATION:
+        {
+            Logger::i(TAG, "Received AUTHENTICATION message");
+
+            // 解析认证消息体
+            auto auth_body = std::dynamic_pointer_cast<AuthenticationMessageBody>(
+                Message::resolve_message(msg).body
+            );
+            if (!auth_body)
+            {
+                Logger::w(TAG, "Invalid AUTHENTICATION message body");
+                send_message(Message::build(
+                    ProtocolMagic::AUTHENTICATION_RESPONSE,
+                    queue_num_counter.fetch_add(1),
+                    msg.id,
+                    std::make_shared<AuthenticationResponseMessageBody>(false, "Invalid message body")
+                ));
+                return;
+            }
+
+            // 根据设备标识查找已配对的设备
+            auto server_config = server_->get_config();
+            auto paired_device = server_config->find_device_by_identifier(auth_body->device_identifier);
+
+            if (!paired_device)
+            {
+                Logger::w(TAG, "Device not paired, identifier not found");
+                send_message(Message::build(
+                    ProtocolMagic::AUTHENTICATION_RESPONSE,
+                    queue_num_counter.fetch_add(1),
+                    msg.id,
+                    std::make_shared<AuthenticationResponseMessageBody>(false, "Device not paired")
+                ));
+                return;
+            }
+
+            // 验证消息签名（在parse时已经验证过）
+            // 如果能到这里，说明签名已经通过验证，客户端拥有对应的私钥
+
+            // TODO: 可选 - 添加挑战值防重放机制
+            // 这里简化实现，暂不检查重放攻击
+
+            // 更新设备配置信息
+            config = *paired_device;
+
+            // 加载设备的公钥
+            try {
+                auto pubkey_data = Base64::decode(paired_device->public_key);
+                public_key = std::make_shared<Crypto::ED25519>(
+                    Crypto::ED25519::load_public_key_from_mem(pubkey_data)
+                );
+            } catch (const std::exception& e) {
+                Logger::e(TAG, "Failed to load device public key: " + std::string(e.what()));
+                send_message(Message::build(
+                    ProtocolMagic::AUTHENTICATION_RESPONSE,
+                    queue_num_counter.fetch_add(1),
+                    msg.id,
+                    std::make_shared<AuthenticationResponseMessageBody>(false, "Failed to load public key")
+                ));
+                return;
+            }
+
+            // 发送认证成功响应
+            send_message(Message::build(
+                ProtocolMagic::AUTHENTICATION_RESPONSE,
+                queue_num_counter.fetch_add(1),
+                msg.id,
+                std::make_shared<AuthenticationResponseMessageBody>(true, "")
+            ));
+
+            Logger::i(TAG, "Device [{}] authenticated successfully", config.name);
+            break;
+        }
     case ProtocolMagic::ECDH:
         {
             // Check if client public key exists

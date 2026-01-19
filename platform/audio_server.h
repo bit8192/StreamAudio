@@ -78,6 +78,9 @@ public:
 
     void save_device_config(const DeviceConfig &device) const;
 
+    // 获取配置对象
+    [[nodiscard]] std::shared_ptr<Config> get_config() const { return config; }
+
     ~AudioServer();
 private:
     void accept_device(socket_t socket, const sockaddr_storage &client_addr);

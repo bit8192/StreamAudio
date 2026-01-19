@@ -10,6 +10,7 @@
 #include "platform/audio_server.h"
 #include "logger.h"
 #include "tools/base64.h"
+#include "tools/crypto.h"
 
 constexpr char LOG_TAG[] = "Config";
 const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-audio";
@@ -155,4 +156,40 @@ void Config::save(const std::shared_ptr<Config>& config) {
     }
 
     write_config_file(CONFIG_FILE_PATH, config);
+}
+
+DeviceConfig* Config::find_device_by_identifier(const std::vector<uint8_t>& device_identifier) {
+    // 遍历已配对的设备
+    for (auto& device : devices) {
+        // 解码设备的公钥
+        if (device.public_key.empty()) {
+            continue;
+        }
+
+        try {
+            auto device_pubkey = Base64::decode(device.public_key);
+
+            // 计算公钥的SHA256
+
+            // 比较SHA256哈希值
+            if (auto pubkey_hash = Crypto::sha256(device_pubkey); pubkey_hash.size() == device_identifier.size()) {
+                bool match = true;
+                for (size_t i = 0; i < pubkey_hash.size(); ++i) {
+                    if (pubkey_hash[i] != device_identifier[i]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) {
+                    Logger::d(LOG_TAG, "Found device by SHA256 identifier: " + device.name);
+                    return &device;
+                }
+            }
+        } catch (const std::exception& e) {
+            Logger::w(LOG_TAG, "Failed to decode device public key: " + std::string(e.what()));
+        }
+    }
+
+    Logger::d(LOG_TAG, "Device not found by identifier");
+    return nullptr;
 }

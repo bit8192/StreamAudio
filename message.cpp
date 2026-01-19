@@ -344,6 +344,20 @@ Message Message::resolve_message(Message msg) {
         case ProtocolMagic::ENCRYPTED:
             // 保持为 ByteArrayMessageBody
             break;
+        case ProtocolMagic::AUTHENTICATION:
+            // 解析认证请求消息
+            msg.body = AuthenticationMessageBody::from_bytes(
+                byte_body->data.data(),
+                byte_body->data.size()
+            );
+            break;
+        case ProtocolMagic::AUTHENTICATION_RESPONSE:
+            // 解析认证响应消息
+            msg.body = AuthenticationResponseMessageBody::from_bytes(
+                byte_body->data.data(),
+                byte_body->data.size()
+            );
+            break;
         case ProtocolMagic::ERROR:
             // 字符串消息
             msg.body = std::make_shared<StringMessageBody>(
@@ -353,4 +367,103 @@ Message Message::resolve_message(Message msg) {
     }
 
     return msg;
+}
+
+// ========== AuthenticationMessageBody 实现 ==========
+
+std::vector<uint8_t> AuthenticationMessageBody::to_byte_array() const {
+    std::vector<uint8_t> buffer;
+
+    // 写入设备标识长度（1字节）和数据
+    buffer.push_back(static_cast<uint8_t>(device_identifier.size()));
+    buffer.insert(buffer.end(), device_identifier.begin(), device_identifier.end());
+
+    // 写入挑战值长度（1字节）和数据
+    buffer.push_back(static_cast<uint8_t>(random_challenge.size()));
+    buffer.insert(buffer.end(), random_challenge.begin(), random_challenge.end());
+
+    return buffer;
+}
+
+size_t AuthenticationMessageBody::size() const {
+    return 1 + device_identifier.size() + 1 + random_challenge.size();
+}
+
+std::shared_ptr<AuthenticationMessageBody> AuthenticationMessageBody::from_bytes(const uint8_t* data, size_t len) {
+    if (len < 2) {
+        Logger::w("AuthenticationMessageBody", "Invalid data length: " + std::to_string(len));
+        return nullptr;
+    }
+
+    size_t offset = 0;
+
+    // 读取设备标识
+    uint8_t id_len = data[offset++];
+    if (offset + id_len > len) {
+        Logger::w("AuthenticationMessageBody", "Invalid device identifier length");
+        return nullptr;
+    }
+    std::vector<uint8_t> identifier(data + offset, data + offset + id_len);
+    offset += id_len;
+
+    // 读取挑战值
+    if (offset >= len) {
+        Logger::w("AuthenticationMessageBody", "Missing challenge data");
+        return nullptr;
+    }
+    uint8_t challenge_len = data[offset++];
+    if (offset + challenge_len > len) {
+        Logger::w("AuthenticationMessageBody", "Invalid challenge length");
+        return nullptr;
+    }
+    std::vector<uint8_t> challenge(data + offset, data + offset + challenge_len);
+
+    return std::make_shared<AuthenticationMessageBody>(identifier, challenge);
+}
+
+// ========== AuthenticationResponseMessageBody 实现 ==========
+
+std::vector<uint8_t> AuthenticationResponseMessageBody::to_byte_array() const {
+    std::vector<uint8_t> buffer;
+
+    // 写入成功标志（1字节）
+    buffer.push_back(success ? 0x01 : 0x00);
+
+    // 写入错误信息长度（2字节，大端序）和数据
+    write_uint16_be(buffer, static_cast<uint16_t>(error_message.size()));
+    buffer.insert(buffer.end(), error_message.begin(), error_message.end());
+
+    return buffer;
+}
+
+size_t AuthenticationResponseMessageBody::size() const {
+    return 1 + 2 + error_message.size();
+}
+
+std::shared_ptr<AuthenticationResponseMessageBody> AuthenticationResponseMessageBody::from_bytes(const uint8_t* data, size_t len) {
+    if (len < 3) {
+        Logger::w("AuthenticationResponseMessageBody", "Invalid data length: " + std::to_string(len));
+        return nullptr;
+    }
+
+    size_t offset = 0;
+
+    // 读取成功标志
+    bool success = (data[offset++] != 0x00);
+
+    // 读取错误信息长度
+    uint16_t msg_len = read_uint16_be(data + offset);
+    offset += 2;
+
+    // 读取错误信息
+    std::string error_msg;
+    if (msg_len > 0) {
+        if (offset + msg_len > len) {
+            Logger::w("AuthenticationResponseMessageBody", "Invalid error message length");
+            return nullptr;
+        }
+        error_msg = std::string(reinterpret_cast<const char*>(data + offset), msg_len);
+    }
+
+    return std::make_shared<AuthenticationResponseMessageBody>(success, error_msg);
 }

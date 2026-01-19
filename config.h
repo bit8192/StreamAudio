@@ -29,6 +29,10 @@ public:
     static std::shared_ptr<Config> load();
     static void save(const std::shared_ptr<Config>& config);
 
+    // 根据设备标识查找设备配置
+    // device_identifier: ED25519公钥的SHA256哈希值（32字节）
+    DeviceConfig* find_device_by_identifier(const std::vector<uint8_t>& device_identifier);
+
 private:
     static std::shared_ptr<Config> parse_config_file(const std::filesystem::path& config_path);
     static void write_config_file(const std::filesystem::path& config_path, const std::shared_ptr<Config>& config);
