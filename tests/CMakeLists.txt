@@ -22,6 +22,8 @@ add_executable(run_tests
         ../logger.cpp
         ../logger.h
         ../platform/audio_server_common.cpp
+        ../platform/${CMAKE_SYSTEM_NAME}/volume_control.cpp
+        ../platform/volume_control.h
         ../config.cpp
         ../config.h
         ../tray_icon.cpp

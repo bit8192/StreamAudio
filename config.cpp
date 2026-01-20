@@ -54,6 +54,9 @@ std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& c
         if (yaml_config["buffer_size"]) {
             config->buffer_size = yaml_config["buffer_size"].as<uint32_t>();
         }
+        if (yaml_config["mute_on_streaming"]) {
+            config->mute_on_streaming = yaml_config["mute_on_streaming"].as<bool>();
+        }
         if (yaml_config["private_key"])
         {
             const auto key_pem = yaml_config["private_key"].as<std::string>();
@@ -115,6 +118,7 @@ void Config::write_config_file(const std::filesystem::path& config_path, const s
         out << YAML::Key << "channels" << YAML::Value << config->channels;
         out << YAML::Key << "format" << YAML::Value << config->format;
         out << YAML::Key << "buffer_size" << YAML::Value << config->buffer_size;
+        out << YAML::Key << "mute_on_streaming" << YAML::Value << config->mute_on_streaming;
 
         // 保存设备列表
         if (!config->devices.empty()) {

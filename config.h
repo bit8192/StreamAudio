@@ -32,6 +32,7 @@ public:
     uint16_t channels = 2;         // 声道数
     uint16_t format = 1;           // 格式（1=PCM）
     uint32_t buffer_size = 4096;   // 缓冲区大小
+    bool mute_on_streaming = false; // 播放时静音
 
     static std::shared_ptr<Config> load();
     static void save(const std::shared_ptr<Config>& config);

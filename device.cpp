@@ -92,6 +92,7 @@ Device::~Device()
             udp_send_thread.join();
         }
         close_udp_socket();
+        server_->update_mute_state();
     }
 
     disconnect();
@@ -586,6 +587,8 @@ void Device::handle_received_message(const Message& msg)
                 // Start UDP sending thread
                 udp_send_thread = std::thread(&Device::udp_send_loop, this);
 
+                server_->update_mute_state();
+
                 Logger::i(TAG, "Device [{}] UDP socket created for streaming to port {}", config.name, client_udp_port);
             }
             catch (const std::exception& e)
@@ -657,6 +660,8 @@ void Device::handle_received_message(const Message& msg)
                     audio_buffer_cv.notify_all();
                     udp_send_thread.join();
                 }
+
+                server_->update_mute_state();
 
                 // Close UDP socket
                 close_udp_socket();

@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "audio.h"
+#include "volume_control.h"
 #include "../device_config.h"
 #include "../tools/crypto.h"
 #include "../config.h"
@@ -42,6 +43,7 @@ class AudioServer final : public std::enable_shared_from_this<AudioServer> {
     std::shared_ptr<Audio> audio_capture;  // 音频捕获对象
     std::thread audio_thread;              // 音频捕获线程
     std::atomic<bool> audio_streaming;     // 音频捕获状态
+    std::unique_ptr<VolumeControl> volume_control; // 音量控制
 
     void accept_connections(); // Accept new TCP connections
     void cleanup_disconnected_devices(); // Clean up disconnected devices without public key
@@ -80,6 +82,9 @@ public:
 
     // 获取配置对象
     [[nodiscard]] std::shared_ptr<Config> get_config() const { return config; }
+
+    // 更新静音状态
+    void update_mute_state();
 
     ~AudioServer();
 private:

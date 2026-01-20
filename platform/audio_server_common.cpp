@@ -230,3 +230,24 @@ void AudioServer::audio_capture_loop() {
 
     Logger::i(LOG_TAG, "Audio capture thread ended");
 }
+
+void AudioServer::update_mute_state() {
+    if (!config->mute_on_streaming) return;
+
+    std::lock_guard<std::mutex> lock(devices_mutex);
+
+    int streaming_count = 0;
+    for (const auto& device : devices_) {
+        if (device->is_udp_streaming()) {
+            streaming_count++;
+        }
+    }
+
+    if (streaming_count > 0 && !volume_control) {
+        volume_control = std::make_unique<VolumeControl>();
+        volume_control->mute();
+    } else if (streaming_count == 0 && volume_control) {
+        volume_control->unmute();
+        volume_control.reset();
+    }
+}
