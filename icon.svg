@@ -1,40 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
-  <!-- 背景圆形 -->
-  <circle cx="128" cy="128" r="120" fill="#4A90E2" opacity="0.1"/>
+  <defs>
+    <linearGradient id="bg" x1="18" y1="18" x2="238" y2="238" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5F9FF"/>
+      <stop offset="0.55" stop-color="#EEF4FF"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
 
-  <!-- 扬声器主体 -->
-  <path d="M 60 90 L 60 166 L 90 166 L 130 196 L 130 60 L 90 90 Z"
-        fill="#4A90E2"
-        stroke="#4A90E2"
-        stroke-width="2"
-        stroke-linejoin="round"/>
+    <linearGradient id="speaker" x1="116" y1="96" x2="196" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2FA6FF"/>
+      <stop offset="1" stop-color="#0A78FF"/>
+    </linearGradient>
 
-  <!-- 音频波形 1 (近) -->
-  <path d="M 150 108 Q 158 108 158 128 Q 158 148 150 148"
-        fill="none"
-        stroke="#4A90E2"
-        stroke-width="8"
-        stroke-linecap="round"/>
+    <linearGradient id="linkStroke" x1="44" y1="84" x2="124" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6E7C90"/>
+      <stop offset="1" stop-color="#1F3A5F"/>
+    </linearGradient>
 
-  <!-- 音频波形 2 (中) -->
-  <path d="M 170 88 Q 186 88 186 128 Q 186 168 170 168"
-        fill="none"
-        stroke="#4A90E2"
-        stroke-width="8"
-        stroke-linecap="round"
-        opacity="0.7"/>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#0B1D33" flood-opacity="0.16"/>
+    </filter>
 
-  <!-- 音频波形 3 (远) -->
-  <path d="M 190 68 Q 214 68 214 128 Q 214 188 190 188"
-        fill="none"
-        stroke="#4A90E2"
-        stroke-width="8"
-        stroke-linecap="round"
-        opacity="0.5"/>
+    <filter id="tinyShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0B1D33" flood-opacity="0.14"/>
+    </filter>
+  </defs>
 
-  <!-- 网络节点装饰 -->
-  <circle cx="150" cy="128" r="4" fill="#2E5C8A"/>
-  <circle cx="170" cy="128" r="4" fill="#2E5C8A" opacity="0.7"/>
-  <circle cx="190" cy="128" r="4" fill="#2E5C8A" opacity="0.5"/>
+  <!-- Background (rounded square) -->
+  <rect x="18" y="18" width="220" height="220" rx="56" fill="url(#bg)"/>
+  <rect x="18" y="18" width="220" height="220" rx="56" fill="none" stroke="#C9D7F0" stroke-width="6"/>
+  <path d="M 44 60 C 80 38 122 32 160 36" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Link / clasp (small, on the left, no overlap) -->
+  <g filter="url(#tinyShadow)" opacity="0.95">
+    <rect x="44" y="112" width="70" height="52" rx="26" fill="none" stroke="url(#linkStroke)" stroke-width="12"/>
+    <rect x="74" y="92" width="70" height="52" rx="26" fill="none" stroke="url(#linkStroke)" stroke-width="12"/>
+  </g>
+
+  <!-- Speaker (primary) -->
+  <g filter="url(#softShadow)">
+    <path d="M 116 108 L 116 196 L 142 196 L 186 224 L 186 80 L 142 108 Z"
+          fill="url(#speaker)"
+          stroke="#0A5BDB"
+          stroke-width="4"
+          stroke-linejoin="round"/>
+
+    <path d="M 196 124 Q 208 124 208 152 Q 208 180 196 180"
+          fill="none"
+          stroke="#0A78FF"
+          stroke-width="10"
+          stroke-linecap="round"/>
+
+    <path d="M 218 108 Q 236 108 236 152 Q 236 196 218 196"
+          fill="none"
+          stroke="#0A78FF"
+          stroke-width="10"
+          stroke-linecap="round"
+          opacity="0.7"/>
+
+    <path d="M 126 116 C 144 108 164 106 178 110"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="7"
+          stroke-linecap="round"
+          opacity="0.22"/>
+  </g>
 </svg>

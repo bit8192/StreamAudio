@@ -232,7 +232,7 @@ void AudioServer::audio_capture_loop() {
 }
 
 void AudioServer::update_mute_state() {
-    if (!config->mute_on_streaming) return;
+    if (!config || !config->mute_on_streaming) return;
 
     std::lock_guard<std::mutex> lock(devices_mutex);
 
@@ -242,6 +242,9 @@ void AudioServer::update_mute_state() {
             streaming_count++;
         }
     }
+
+    Logger::d(LOG_TAG, "update_mute_state: streaming_count=" + std::to_string(streaming_count) +
+        ", volume_control=" + std::string(volume_control ? "on" : "off"));
 
     if (streaming_count > 0 && !volume_control) {
         volume_control = std::make_unique<VolumeControl>();

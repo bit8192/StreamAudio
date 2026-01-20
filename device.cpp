@@ -638,6 +638,7 @@ void Device::handle_received_message(const Message& msg)
             ).to_aes256gcm_encrypted_message(server_->get_sign_key(), session_key));
 
             Logger::i(TAG, "Device [{}] PLAY_RESPONSE sent", config.name);
+            server_->update_mute_state();
             break;
         }
     case ProtocolMagic::STOP:
@@ -688,6 +689,7 @@ void Device::handle_received_message(const Message& msg)
             ).to_aes256gcm_encrypted_message(server_->get_sign_key(), session_key));
 
             Logger::i(TAG, "Device [{}] STOP_RESPONSE sent", config.name);
+            server_->update_mute_state();
             break;
         }
     default:
