@@ -86,6 +86,9 @@ std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& c
                 if (device_node["public_key"]) {
                     device.public_key = device_node["public_key"].as<std::string>();
                 }
+                if (device_node["auto_play"]) {
+                    device.auto_play = device_node["auto_play"].as<bool>();
+                }
                 config->devices.push_back(device);
                 Logger::i(LOG_TAG, "读取设备配置: " + device.name + " (" + device.address + ")");
             }
@@ -133,6 +136,7 @@ void Config::write_config_file(const std::filesystem::path& config_path, const s
                 if (!device.public_key.empty()) {
                     out << YAML::Key << "public_key" << YAML::Value << device.public_key;
                 }
+                out << YAML::Key << "auto_play" << YAML::Value << device.auto_play;
                 out << YAML::EndMap;
             }
             out << YAML::EndSeq;
