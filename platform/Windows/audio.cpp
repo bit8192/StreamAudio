@@ -3,6 +3,7 @@
 //
 
 #include "../audio.h"
+#include "../../config.h"
 #include "../../exceptions.h"
 
 
@@ -11,7 +12,7 @@ const IID IID_IMMDeviceEnumerator = __uuidof(IMMDeviceEnumerator);
 const IID IID_IAudioClient = __uuidof(IAudioClient);
 const IID IID_IAudioCaptureClient = __uuidof(IAudioCaptureClient);
 
-Audio::Audio() {
+Audio::Audio(const std::shared_ptr<Config>& config) {
     // COM 初始化由 Qt 应用负责，不在此处重复初始化
     hr = CoCreateInstance(CLSID_MMDeviceEnumerator, nullptr, CLSCTX_ALL, IID_IMMDeviceEnumerator, (void**)&pEnumerator);
     if (FAILED(hr)) throw AudioException("create core instance failed.");
@@ -46,12 +47,11 @@ Audio::Audio() {
         pwfx = pNewFormat;
     }
 
-    // 修改Audio构造函数中的初始化逻辑
-    REFERENCE_TIME hnsRequestedDuration = 50 * 10000; // 50ms (单位: 100纳秒)
+    // 使用配置的缓冲区大小计算持续时间
+    REFERENCE_TIME hnsRequestedDuration = (REFERENCE_TIME)((double)config->buffer_size / pwfx->nSamplesPerSec * REFTIMES_PER_SEC);
     REFERENCE_TIME hnsMinDuration;
-    hr = pAudioClient->GetDevicePeriod(nullptr, &hnsMinDuration); // 获取设备支持的最小周期
+    hr = pAudioClient->GetDevicePeriod(nullptr, &hnsMinDuration);
 
-// 使用最小周期或50ms中的较大者
     REFERENCE_TIME hnsBufferDuration = (hnsRequestedDuration > hnsMinDuration)
                                        ? hnsRequestedDuration : hnsMinDuration;
 

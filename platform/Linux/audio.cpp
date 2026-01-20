@@ -3,6 +3,7 @@
 //
 
 #include "../audio.h"
+#include "../../config.h"
 
 #include <pulse/error.h>
 #include <pulse/pulseaudio.h>
@@ -100,15 +101,14 @@ std::string get_default_output_monitor() {
     return default_sink_monitor_name;
 }
 
-constexpr int BUFFER_SIZE = 1024;
-// PulseAudio 配置
-const pa_sample_spec ss = {
-    .format = PA_SAMPLE_S16LE, // 16-bit signed little-endian
-    .rate = 44100, // 采样率 (Hz)
-    .channels = 2 // 立体声
-};
+pa_sample_spec ss;
+uint32_t buffer_size;
 
-Audio::Audio() {
+Audio::Audio(const std::shared_ptr<Config>& config) {
+    buffer_size = config->buffer_size;
+    ss.format = config->bits == 16 ? PA_SAMPLE_S16LE : PA_SAMPLE_S32LE;
+    ss.rate = config->sample_rate;
+    ss.channels = config->channels;
     // 创建 PulseAudio 捕获流（监控音频输出）
     const auto default_sink_monitor_name = get_default_output_monitor();
 
@@ -116,11 +116,11 @@ Audio::Audio() {
     const char* device_name = default_sink_monitor_name.empty() ? nullptr : default_sink_monitor_name.c_str();
 
     pa_buffer_attr buffer_attr = {
-        .maxlength = 4 * 1024,
-        .tlength = (uint32_t) -1,  // 目标缓冲区长度
+        .maxlength = buffer_size * 4,
+        .tlength = (uint32_t) -1,
         .prebuf = (uint32_t) -1,
-        .minreq = BUFFER_SIZE,       // 最小请求大小
-        .fragsize = BUFFER_SIZE      // 片段大小
+        .minreq = buffer_size,
+        .fragsize = buffer_size
     };
 
     pulse = pa_simple_new(
@@ -141,14 +141,14 @@ Audio::Audio() {
 }
 
 void Audio::capture(const std::function<bool(const char *, uint32_t)> &callback) {
-    uint8_t buffer[BUFFER_SIZE];
+    std::vector<uint8_t> buffer(buffer_size);
     bool is_continue = true;
     while (is_continue) {
-        const auto len = pa_simple_read(pulse, buffer, sizeof(buffer), &error);
+        const auto len = pa_simple_read(pulse, buffer.data(), buffer.size(), &error);
         if (len < 0) {
             throw_exception("PulseAudio 读取错误: ", error);
         }
-        is_continue = callback(reinterpret_cast<const char *>(buffer), BUFFER_SIZE);
+        is_continue = callback(reinterpret_cast<const char *>(buffer.data()), buffer_size);
     }
 }
 

@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
         const auto config = Config::load();
 
         // 创建音频服务器
-        auto audio = std::make_unique<Audio>();
+        auto audio = std::make_unique<Audio>(config);
         const auto format = audio->get_audio_info();
         // 启动服务器
         const auto server = std::make_shared<AudioServer>(config, format, std::move(audio));

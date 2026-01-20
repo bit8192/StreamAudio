@@ -4,6 +4,7 @@
 
 #include "../test_utils.h"
 #include "../platform/audio.h"
+#include "../config.h"
 #include <fstream>
 #include <iostream>
 
@@ -27,7 +28,8 @@ namespace
     void output_test(uint32_t times) {
         std::ofstream output("output.wav", std::ios::binary);
         auto start = std::time(nullptr);
-        auto audio = Audio();
+        auto config = Config::load();
+        auto audio = Audio(config);
 
         auto headerPos = output.tellp();
         WriteWaveHeader(output, audio.get_audio_info(), 0);

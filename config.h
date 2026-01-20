@@ -26,6 +26,13 @@ public:
     std::shared_ptr<Crypto::ED25519> private_key; // 签名密钥对
     std::vector<DeviceConfig> devices;
 
+    // 音频质量配置
+    uint32_t sample_rate = 48000;  // 采样率
+    uint16_t bits = 16;            // 位深度
+    uint16_t channels = 2;         // 声道数
+    uint16_t format = 1;           // 格式（1=PCM）
+    uint32_t buffer_size = 4096;   // 缓冲区大小
+
     static std::shared_ptr<Config> load();
     static void save(const std::shared_ptr<Config>& config);
 

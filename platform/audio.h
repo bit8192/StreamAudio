@@ -14,6 +14,9 @@
 #endif
 #include <functional>
 #include <cstdint>
+#include <memory>
+
+class Config;
 
 #define REFTIMES_PER_SEC  10000000
 #define REFTIMES_PER_MILLISEC  10000
@@ -63,7 +66,7 @@ private:
 #endif
 
 public:
-    Audio();
+    Audio(const std::shared_ptr<Config>& config);
 
     audio_info get_audio_info();
 

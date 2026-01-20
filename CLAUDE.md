@@ -39,7 +39,7 @@ CMake 通过 `WIN32` 和 `LINUX` 变量自动选择平台特定的源文件和�
 
 ### 核心模块
 
-#### 1. 音频捕获层 (`platform/audio.h`, `platform/{windows,linux}/audio.cpp`)
+#### 1. 音频捕获层 (`platform/audio.h`, `platform/{Windows,Linux}/audio.cpp`)
 
 跨平台音频捕获抽象，提供统一的 `Audio` 类接口：
 
@@ -58,7 +58,7 @@ CMake 通过 `WIN32` 和 `LINUX` 变量自动选择平台特定的源文件和�
 
 **AudioServer** 类负责网络通信和客户端管理：
 
-- **平台特定部分** (`platform/windows/audio_server.cpp`, `platform/linux/audio_server.cpp`):
+- **平台特定部分** (`platform/Windows/audio_server.cpp`, `platform/Linux/audio_server.cpp`):
   - Socket 库初始化/清理（Windows 需要 WSAStartup/WSACleanup）
   - 平台特定的网络 API 调用
 

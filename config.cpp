@@ -39,6 +39,21 @@ std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& c
             config->port = yaml_config["port"].as<uint16_t>();
             Logger::i(LOG_TAG, "读取配置: port=" + std::to_string(config->port));
         }
+        if (yaml_config["sample_rate"]) {
+            config->sample_rate = yaml_config["sample_rate"].as<uint32_t>();
+        }
+        if (yaml_config["bits"]) {
+            config->bits = yaml_config["bits"].as<uint16_t>();
+        }
+        if (yaml_config["channels"]) {
+            config->channels = yaml_config["channels"].as<uint16_t>();
+        }
+        if (yaml_config["format"]) {
+            config->format = yaml_config["format"].as<uint16_t>();
+        }
+        if (yaml_config["buffer_size"]) {
+            config->buffer_size = yaml_config["buffer_size"].as<uint32_t>();
+        }
         if (yaml_config["private_key"])
         {
             const auto key_pem = yaml_config["private_key"].as<std::string>();
@@ -93,6 +108,13 @@ void Config::write_config_file(const std::filesystem::path& config_path, const s
         out << YAML::Value << config->port;
         out << YAML::Key << "private_key";
         out << YAML::Value << Base64::encode(config->private_key->export_private_key());
+        out << YAML::Newline;
+        out << YAML::Comment("音频质量配置");
+        out << YAML::Key << "sample_rate" << YAML::Value << config->sample_rate;
+        out << YAML::Key << "bits" << YAML::Value << config->bits;
+        out << YAML::Key << "channels" << YAML::Value << config->channels;
+        out << YAML::Key << "format" << YAML::Value << config->format;
+        out << YAML::Key << "buffer_size" << YAML::Value << config->buffer_size;
 
         // 保存设备列表
         if (!config->devices.empty()) {
