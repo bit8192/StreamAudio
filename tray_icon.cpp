@@ -5,11 +5,15 @@
 #include "tray_icon.h"
 #include "platform/audio_server.h"
 #include "qrcode_dialog.h"
+#include "move_client_dialog.h"
 #include "platform_utils.h"
+#include "config.h"
 #include <QAction>
 #include <QIcon>
 #include <QApplication>
+#include <QDesktopServices>
 #include <QMessageBox>
+#include <QUrl>
 #include "logger.h"
 
 constexpr char LOG_TAG[] = "TrayIcon";
@@ -54,6 +58,20 @@ void TrayIcon::create_menu() {
     // 添加菜单项：配对二维码
     QAction *pair_action = context_menu_->addAction("配对二维码");
     pair_action->setData("pair_qrcode");
+
+    // 添加菜单项：移动客户端
+    QAction *move_action = context_menu_->addAction("移动客户端");
+    move_action->setData("move_client");
+
+    // 添加菜单项：开机启动（可勾选）
+    QAction *autostart_action = context_menu_->addAction("开机启动");
+    autostart_action->setData("auto_start");
+    autostart_action->setCheckable(true);
+    autostart_action->setChecked(PlatformUtils::is_auto_start_enabled());
+
+    // 添加菜单项：配置文件
+    QAction *config_action = context_menu_->addAction("配置文件");
+    config_action->setData("config_file");
 
     // 添加菜单项：关于
     QAction *about_action = context_menu_->addAction("关于");
@@ -116,9 +134,36 @@ void TrayIcon::on_menu_triggered(QAction *action) {
         QApplication::quit();
     } else if (action_data == "pair_qrcode") {
         show_pair_qrcode();
+    } else if (action_data == "move_client") {
+        show_move_client();
+    } else if (action_data == "auto_start") {
+        const bool enabled = action->isChecked();
+        std::string err;
+        if (!PlatformUtils::set_auto_start_enabled(enabled, &err)) {
+            Logger::e(LOG_TAG, "set auto start failed: " + err);
+            QMessageBox::warning(nullptr, "错误", "设置开机启动失败");
+            action->setChecked(!enabled);
+        }
+    } else if (action_data == "config_file") {
+        const auto path = Config::get_config_file_path();
+        const QString file_path = QString::fromStdString(path.string());
+        if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file_path))) {
+            QMessageBox::warning(nullptr, "错误", "无法使用默认程序打开配置文件");
+        }
     } else if (action_data == "about") {
         show_about();
     }
+}
+
+void TrayIcon::show_move_client() {
+    if (move_client_dialog_ == nullptr) {
+        move_client_dialog_ = new MoveClientDialog();
+        move_client_dialog_->setAttribute(Qt::WA_DeleteOnClose);
+        connect(move_client_dialog_, &QDialog::destroyed, this, [this] {
+            move_client_dialog_ = nullptr;
+        });
+    }
+    move_client_dialog_->show();
 }
 
 void TrayIcon::show_pair_qrcode() {

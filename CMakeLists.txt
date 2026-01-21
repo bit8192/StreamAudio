@@ -45,6 +45,8 @@ add_executable(StreamAudio main.cpp
         config.h
         tray_icon.cpp
         tray_icon.h
+        move_client_dialog.cpp
+        move_client_dialog.h
         qrcode_dialog.cpp
         qrcode_dialog.h
         platform_utils.cpp

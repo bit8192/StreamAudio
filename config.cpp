@@ -16,6 +16,10 @@ constexpr char LOG_TAG[] = "Config";
 const auto CONFIG_PATH = HOME_DIR / ".config" / "stream-audio";
 const auto CONFIG_FILE_PATH = HOME_DIR / ".config" / "stream-audio" / "config.yaml";
 
+std::filesystem::path Config::get_config_file_path() {
+    return CONFIG_FILE_PATH;
+}
+
 void init_server_config(const std::shared_ptr<Config> &config)
 {
     config->port = STREAMAUDIO_CONFIG_DEFAULT_PORT;

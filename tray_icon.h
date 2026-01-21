@@ -12,6 +12,7 @@
 
 class AudioServer;
 class QRCodeDialog;
+class MoveClientDialog;
 
 class TrayIcon : public QObject {
     Q_OBJECT
@@ -36,9 +37,11 @@ private:
     QMenu* context_menu_;
     std::shared_ptr<AudioServer> server_;
     QRCodeDialog* qr_dialog_ = nullptr;
+    MoveClientDialog* move_client_dialog_ = nullptr;
 
     void create_menu();
     void show_pair_qrcode();
+    void show_move_client();
     void show_about();
 };
 
