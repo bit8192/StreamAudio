@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <chrono>
 
 #include "audio_server.h"
 #include "../logger.h"
@@ -214,11 +215,17 @@ void AudioServer::audio_capture_loop() {
                 return false; // Stop capturing
             }
 
+            const auto capture_time_ns = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()
+                ).count()
+            );
+
             // Distribute audio data to all streaming devices
             std::lock_guard<std::mutex> lock(devices_mutex);
             for (const auto& device : devices_) {
                 if (device->is_udp_streaming()) {
-                    device->push_audio_data(reinterpret_cast<const uint8_t*>(data), length);
+                    device->push_audio_data(reinterpret_cast<const uint8_t*>(data), length, capture_time_ns);
                 }
             }
 

@@ -13,6 +13,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <list>
+#include <deque>
 #include <chrono>
 
 // 前向声明，避免循环依赖
@@ -88,7 +89,7 @@ public:
     int32_t get_next_queue_num();
 
     // UDP 音频流控制
-    void push_audio_data(const uint8_t* data, size_t len);  // 推送音频数据
+    void push_audio_data(const uint8_t* data, size_t len, uint64_t capture_time_ns);  // 推送音频数据
     bool is_udp_streaming() const { return is_connected() && udp_streaming; }  // 是否正在 UDP 流传输
 
 private:
@@ -131,7 +132,12 @@ private:
     // 音频缓冲区（线程安全）
     std::mutex audio_buffer_mutex;
     std::condition_variable audio_buffer_cv;
-    std::vector<uint8_t> audio_buffer;        // 音频数据缓冲区
+    struct AudioSegment {
+        std::vector<uint8_t> data;
+        uint64_t capture_time_ns; // std::chrono::steady_clock 纳秒时间戳（time_since_epoch）
+    };
+    std::deque<AudioSegment> audio_segments;  // 音频数据分段缓冲区（带时间戳）
+    size_t segment_offset = 0;                // 当前分段已消耗的字节数
     bool audio_data_available;                // 是否有新音频数据
 
     // 内部方法

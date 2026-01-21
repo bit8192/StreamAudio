@@ -169,28 +169,40 @@ std::shared_ptr<Config> Config::load() {
     if (cacheConfig) return cacheConfig;
 
     // 确保配置目录存在
-    if (!std::filesystem::exists(CONFIG_PATH)) {
-        std::filesystem::create_directories(CONFIG_PATH);
-        Logger::i(LOG_TAG, "创建配置目录: " + CONFIG_PATH.string());
+    try {
+        if (!std::filesystem::exists(CONFIG_PATH)) {
+            std::filesystem::create_directories(CONFIG_PATH);
+            Logger::i(LOG_TAG, "创建配置目录: " + CONFIG_PATH.string());
+        }
+    } catch (const std::exception& e) {
+        Logger::e(LOG_TAG, "创建配置目录失败: " + std::string(e.what()));
     }
 
     std::shared_ptr<Config> config = parse_config_file(CONFIG_FILE_PATH);
 
     // 如果配置文件不存在，创建默认配置文件
-    if (!std::filesystem::exists(CONFIG_FILE_PATH)) {
-        write_config_file(CONFIG_FILE_PATH, config);
+    try {
+        if (!std::filesystem::exists(CONFIG_FILE_PATH)) {
+            write_config_file(CONFIG_FILE_PATH, config);
+        }
+    } catch (const std::exception& e) {
+        Logger::e(LOG_TAG, "创建默认配置文件失败: " + std::string(e.what()));
     }
 
     return config;
 }
 
 void Config::save(const std::shared_ptr<Config>& config) {
-    // 确保配置目录存在
-    if (!std::filesystem::exists(CONFIG_PATH)) {
-        std::filesystem::create_directories(CONFIG_PATH);
-    }
+    try {
+        // 确保配置目录存在
+        if (!std::filesystem::exists(CONFIG_PATH)) {
+            std::filesystem::create_directories(CONFIG_PATH);
+        }
 
-    write_config_file(CONFIG_FILE_PATH, config);
+        write_config_file(CONFIG_FILE_PATH, config);
+    } catch (const std::exception& e) {
+        Logger::e(LOG_TAG, "保存配置失败: " + std::string(e.what()));
+    }
 }
 
 DeviceConfig* Config::find_device_by_identifier(const std::vector<uint8_t>& device_identifier) {

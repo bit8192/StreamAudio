@@ -308,17 +308,15 @@ std::vector<uint8_t> Crypto::hmac_sha256(
     }
 
     if (EVP_MAC_update(ctx, data.data(), data.size()) != 1) {
-        throw CryptoException("EVP_MAC_update failed\n");
         EVP_MAC_CTX_free(ctx);
         EVP_MAC_free(mac);
-        return {};
+        throw CryptoException("EVP_MAC_update failed\n");
     }
 
     if (EVP_MAC_final(ctx, hmac.data(), &hmac_len, hmac.size()) != 1) {
-        throw CryptoException("EVP_MAC_final failed\n");
         EVP_MAC_CTX_free(ctx);
         EVP_MAC_free(mac);
-        return {};
+        throw CryptoException("EVP_MAC_final failed\n");
     }
 
     hmac.resize(hmac_len); // 调整大小以匹配实际 HMAC 长度
@@ -381,7 +379,7 @@ std::vector<uint8_t> Crypto::aes_256_gcm_encrypt(
         throw CryptoException("IV cannot be empty");
     }
 
-    Logger::d(LOG_TAG, "encrypt aes256gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
+    // Logger::d(LOG_TAG, "encrypt aes256gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
@@ -451,7 +449,7 @@ std::vector<uint8_t> Crypto::aes_128_gcm_encrypt(
         throw CryptoException("IV cannot be empty");
     }
 
-    Logger::d(LOG_TAG, "encrypt aes128gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
+    // Logger::d(LOG_TAG, "encrypt aes128gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
@@ -517,7 +515,7 @@ std::vector<uint8_t> Crypto::aes_256_gcm_decrypt(
         throw CryptoException("Ciphertext too short (must include 16-byte authentication tag)");
     }
 
-    Logger::d(LOG_TAG, "decrypt aes256gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
+    // Logger::d(LOG_TAG, "decrypt aes256gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
@@ -592,7 +590,7 @@ std::vector<uint8_t> Crypto::aes_128_gcm_decrypt(
         throw CryptoException("Ciphertext too short (must include 16-byte authentication tag)");
     }
 
-    Logger::d(LOG_TAG, "decrypt aes128gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
+    // Logger::d(LOG_TAG, "decrypt aes128gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {

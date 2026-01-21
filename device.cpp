@@ -271,9 +271,14 @@ void Device::listening_loop()
 
     try
     {
-        size_t offset = 0;
+        size_t offset = 0; // bytes currently stored in buffer (unparsed)
         while (connected)
         {
+            if (offset >= buffer.size())
+            {
+                buffer.resize(buffer.size() * 2);
+            }
+
             const ssize_t bytes_read = socket_recv(buffer.data() + offset, buffer.size() - offset);
 
             if (bytes_read <= 0)
@@ -291,28 +296,31 @@ void Device::listening_loop()
             }
 
             Logger::d(TAG, "Read " + std::to_string(bytes_read) + " bytes from device [" + config.name + "]");
-            // 解析消息
-            size_t read_offset = 0;
-            while (read_offset < offset + bytes_read)
+
+            size_t total = offset + static_cast<size_t>(bytes_read);
+            size_t cursor = 0;
+            while (cursor < total)
             {
                 size_t bytes_consumed = 0;
-
-                if (auto msg_opt = Message::parse(buffer.data() + offset, bytes_read + offset - read_offset,
-                                                  bytes_consumed, public_key))
-                {
-                    handle_received_message(*msg_opt);
-                    offset += bytes_consumed;
-                }
-                else
+                auto msg_opt = Message::parse(
+                    buffer.data() + cursor,
+                    total - cursor,
+                    bytes_consumed,
+                    public_key
+                );
+                if (!msg_opt)
                 {
                     break;
                 }
+
+                handle_received_message(*msg_opt);
+                cursor += bytes_consumed;
             }
 
-            if (read_offset < offset + bytes_read)
+            if (cursor < total)
             {
-                size_t&& remaining = offset + bytes_read - read_offset;
-                memcpy(buffer.data(), buffer.data() + read_offset, read_offset);
+                const size_t remaining = total - cursor;
+                std::memmove(buffer.data(), buffer.data() + cursor, remaining);
                 offset = remaining;
             }
             else
@@ -711,7 +719,8 @@ void Device::handle_received_message(const Message& msg)
                 // Clear audio buffer
                 {
                     std::lock_guard<std::mutex> lock(audio_buffer_mutex);
-                    audio_buffer.clear();
+                    audio_segments.clear();
+                    segment_offset = 0;
                     audio_data_available = false;
                 }
 
@@ -731,6 +740,51 @@ void Device::handle_received_message(const Message& msg)
 
             Logger::i(TAG, "Device [{}] STOP_RESPONSE sent", config.name);
             server_->update_mute_state();
+            break;
+        }
+    case ProtocolMagic::SYNC:
+        {
+            if (!is_ecdh_completed())
+            {
+                Logger::w(TAG, "Received SYNC before ECDH completion");
+                return;
+            }
+
+            const auto msg_body = std::dynamic_pointer_cast<ByteArrayMessageBody>(msg.body);
+            if (!msg_body || msg_body->data.size() != 8)
+            {
+                Logger::w(TAG, "Invalid SYNC message body");
+                return;
+            }
+
+            auto read_u64_be = [](const uint8_t* p) -> uint64_t {
+                uint64_t v = 0;
+                for (int i = 0; i < 8; ++i) v = (v << 8) | p[i];
+                return v;
+            };
+            auto write_u64_be = [](std::vector<uint8_t>& out, size_t off, uint64_t v) {
+                for (int i = 7; i >= 0; --i) out[off + (7 - i)] = static_cast<uint8_t>((v >> (i * 8)) & 0xFF);
+            };
+
+            const uint64_t t0_client_ns = read_u64_be(msg_body->data.data());
+            const uint64_t t1_server_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()
+            ).count());
+
+            std::vector<uint8_t> response_body(24);
+            write_u64_be(response_body, 0, t0_client_ns);
+            write_u64_be(response_body, 8, t1_server_ns);
+            const uint64_t t2_server_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()
+            ).count());
+            write_u64_be(response_body, 16, t2_server_ns);
+
+            send_message(Message::build(
+                ProtocolMagic::SYNC_RESPONSE,
+                queue_num_counter.fetch_add(1),
+                msg.id,
+                std::make_shared<ByteArrayMessageBody>(response_body)
+            ).to_aes256gcm_encrypted_message(server_->get_sign_key(), session_key));
             break;
         }
     default:
@@ -888,6 +942,14 @@ void Device::udp_send_loop()
 
     try
     {
+        const auto audio_info = server_->get_audio_info();
+        const size_t bytes_per_frame = static_cast<size_t>(audio_info.channels) * (static_cast<size_t>(audio_info.bits) / 8);
+        const uint32_t sample_rate = audio_info.sample_rate;
+        if (bytes_per_frame == 0 || sample_rate == 0)
+        {
+            throw std::runtime_error("Invalid audio info: bytes_per_frame or sample_rate is 0");
+        }
+
         while (udp_streaming)
         {
             std::unique_lock<std::mutex> lock(audio_buffer_mutex);
@@ -904,11 +966,13 @@ void Device::udp_send_loop()
             }
 
             // Process available audio data
-            while (!audio_buffer.empty() && udp_streaming)
+            while (!audio_segments.empty() && udp_streaming)
             {
-                size_t chunk_size = std::min(audio_buffer.size(), AUDIO_CHUNK_SIZE);
+                auto& seg = audio_segments.front();
+                const size_t seg_remaining = seg.data.size() - segment_offset;
+                const size_t chunk_size = std::min(seg_remaining, AUDIO_CHUNK_SIZE);
 
-                // Build UDP packet: [sequence_number(4)] + [encrypted_audio_data]
+                // Build UDP packet: [sequence_number(4)] + [capture_time_ns(8)] + [encrypted_audio_data]
                 packet_buffer.clear();
 
                 // Add sequence number (big-endian)
@@ -918,9 +982,26 @@ void Device::udp_send_loop()
                 packet_buffer.push_back((seq >> 8) & 0xFF);
                 packet_buffer.push_back(seq & 0xFF);
 
-                // Extract audio chunk
-                std::vector<uint8_t> audio_chunk(audio_buffer.begin(), audio_buffer.begin() + chunk_size);
-                audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + chunk_size);
+                // Add capture timestamp (big-endian)
+                const uint64_t frame_offset = static_cast<uint64_t>(segment_offset / bytes_per_frame);
+                const uint64_t time_offset_ns = (frame_offset * 1000000000ULL) / sample_rate;
+                const uint64_t capture_time_ns = seg.capture_time_ns + time_offset_ns;
+                for (int i = 7; i >= 0; --i)
+                {
+                    packet_buffer.push_back(static_cast<uint8_t>((capture_time_ns >> (i * 8)) & 0xFF));
+                }
+
+                // Extract audio chunk (from a single segment)
+                std::vector<uint8_t> audio_chunk(
+                    seg.data.begin() + static_cast<std::ptrdiff_t>(segment_offset),
+                    seg.data.begin() + static_cast<std::ptrdiff_t>(segment_offset + chunk_size)
+                );
+                segment_offset += chunk_size;
+                if (segment_offset >= seg.data.size())
+                {
+                    audio_segments.pop_front();
+                    segment_offset = 0;
+                }
 
                 // Encrypt audio data using UDP audio key
                 auto encrypted_chunk = encrypt_audio_data(audio_chunk, seq);
@@ -936,7 +1017,7 @@ void Device::udp_send_loop()
                 lock.lock();
             }
 
-            if (audio_buffer.empty())
+            if (audio_segments.empty())
             {
                 audio_data_available = false;
             }
@@ -1012,7 +1093,7 @@ void Device::close_udp_socket()
     }
 }
 
-void Device::push_audio_data(const uint8_t* data, size_t len)
+void Device::push_audio_data(const uint8_t* data, size_t len, uint64_t capture_time_ns)
 {
     if (!udp_streaming || len == 0)
     {
@@ -1021,16 +1102,31 @@ void Device::push_audio_data(const uint8_t* data, size_t len)
 
     std::lock_guard<std::mutex> lock(audio_buffer_mutex);
 
-    // Append new audio data to buffer
-    audio_buffer.insert(audio_buffer.end(), data, data + len);
+    // Append new audio data to buffer (keep capture timestamp for this segment)
+    audio_segments.push_back(AudioSegment{std::vector<uint8_t>(data, data + len), capture_time_ns});
     audio_data_available = true;
 
     // Limit buffer size to prevent memory overflow
     constexpr size_t MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
-    if (audio_buffer.size() > MAX_BUFFER_SIZE)
+    size_t total_bytes = 0;
+    for (const auto& seg : audio_segments)
     {
-        size_t excess = audio_buffer.size() - MAX_BUFFER_SIZE;
-        audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + excess);
+        total_bytes += seg.data.size();
+    }
+    if (!audio_segments.empty() && segment_offset > 0)
+    {
+        total_bytes -= std::min(segment_offset, audio_segments.front().data.size());
+    }
+    while (total_bytes > MAX_BUFFER_SIZE && !audio_segments.empty())
+    {
+        // Drop oldest data (best-effort). Keep segment_offset consistent.
+        if (segment_offset > 0)
+        {
+            total_bytes -= segment_offset;
+            segment_offset = 0;
+        }
+        total_bytes -= audio_segments.front().data.size();
+        audio_segments.pop_front();
     }
 
     // Notify UDP send thread

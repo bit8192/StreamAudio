@@ -14,6 +14,8 @@ const std::vector<ProtocolMagicHelper::MagicInfo> &ProtocolMagicHelper::get_all_
         {ProtocolMagic::PLAY_RESPONSE, "PLAY_RESPONSE", {}},
         {ProtocolMagic::STOP, "STOP", {}},
         {ProtocolMagic::STOP_RESPONSE, "STOP_RESPONSE", {}},
+        {ProtocolMagic::SYNC, "SYNC", {}},
+        {ProtocolMagic::SYNC_RESPONSE, "SYNC_RESPONSE", {}},
         {ProtocolMagic::ENCRYPTED, "ENCRYPTED", {}},
         {ProtocolMagic::ERROR, "ERROR", {}}
     };
