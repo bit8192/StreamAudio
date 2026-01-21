@@ -89,6 +89,10 @@ std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& c
                 if (device_node["auto_play"]) {
                     device.auto_play = device_node["auto_play"].as<bool>();
                 }
+                if (device_node["audio_encryption"]) {
+                    device.audio_encryption = audio_encryption_from_string(
+                        device_node["audio_encryption"].as<std::string>());
+                }
                 config->devices.push_back(device);
                 Logger::i(LOG_TAG, "读取设备配置: " + device.name + " (" + device.address + ")");
             }
@@ -137,6 +141,7 @@ void Config::write_config_file(const std::filesystem::path& config_path, const s
                     out << YAML::Key << "public_key" << YAML::Value << device.public_key;
                 }
                 out << YAML::Key << "auto_play" << YAML::Value << device.auto_play;
+                out << YAML::Key << "audio_encryption" << YAML::Value << audio_encryption_to_string(device.audio_encryption);
                 out << YAML::EndMap;
             }
             out << YAML::EndSeq;

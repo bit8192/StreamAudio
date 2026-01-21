@@ -87,6 +87,10 @@ public:
     int32_t get_next_message_id();
     int32_t get_next_queue_num();
 
+    // UDP 音频流控制
+    void push_audio_data(const uint8_t* data, size_t len);  // 推送音频数据
+    bool is_udp_streaming() const { return is_connected() && udp_streaming; }  // 是否正在 UDP 流传输
+
 private:
     std::shared_ptr<AudioServer> server_;
     DeviceConfig config;
@@ -145,10 +149,5 @@ private:
     void udp_send_loop();                     // UDP 发送线程主循环
     void send_udp_packet(const uint8_t* data, size_t len);  // 发送单个 UDP 包
     void close_udp_socket();                  // 关闭 UDP socket
-    std::vector<uint8_t> encrypt_audio_data(const std::vector<uint8_t>& plaintext);  // 加密音频数据
-
-public:
-    // UDP 音频流控制
-    void push_audio_data(const uint8_t* data, size_t len);  // 推送音频数据
-    bool is_udp_streaming() const { return udp_streaming; }  // 是否正在 UDP 流传输
+    std::vector<uint8_t> encrypt_audio_data(const std::vector<uint8_t>& plaintext, uint32_t sequence);  // 加密音频数据
 };

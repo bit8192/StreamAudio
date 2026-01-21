@@ -26,6 +26,19 @@ static std::vector<uint8_t> derive_udp_audio_key(const std::vector<uint8_t>& tcp
     return Crypto::hmac_sha256(tcp_session_key, combined);
 }
 
+static std::vector<uint8_t> build_udp_audio_iv(const uint32_t sequence, const std::vector<uint8_t>& key)
+{
+    std::vector<uint8_t> iv(12, 0);
+    iv[0] = static_cast<uint8_t>((sequence >> 24) & 0xFF);
+    iv[1] = static_cast<uint8_t>((sequence >> 16) & 0xFF);
+    iv[2] = static_cast<uint8_t>((sequence >> 8) & 0xFF);
+    iv[3] = static_cast<uint8_t>(sequence & 0xFF);
+    if (key.size() >= 8) {
+        std::copy_n(key.begin(), 8, iv.begin() + 4);
+    }
+    return iv;
+}
+
 Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const long msg_wait_timeout)
     : server_(std::move(server)),
       config(std::move(config)),
@@ -538,6 +551,11 @@ void Device::handle_received_message(const Message& msg)
             // Parse client UDP port (big-endian)
             uint16_t client_udp_port = (static_cast<uint16_t>(msg_body->data[0]) << 8) |
                 static_cast<uint16_t>(msg_body->data[1]);
+            bool has_encryption_method = msg_body->data.size() >= 3;
+            AudioEncryptionMethod requested_encryption = config.audio_encryption;
+            if (has_encryption_method) {
+                requested_encryption = audio_encryption_from_wire(msg_body->data[2]);
+            }
 
             Logger::i(TAG, "Device [{}] requested PLAY on UDP port {}", config.name, client_udp_port);
 
@@ -579,13 +597,35 @@ void Device::handle_received_message(const Message& msg)
                     throw std::runtime_error("IPv6 not supported yet");
                 }
 
-                // Initialize streaming state
-                udp_streaming = true;
-                udp_sequence_num = 0;
-                audio_data_available = false;
+            // Initialize streaming state
+            udp_streaming = true;
+            udp_sequence_num = 0;
+            audio_data_available = false;
 
-                // Start UDP sending thread
-                udp_send_thread = std::thread(&Device::udp_send_loop, this);
+            if (has_encryption_method && requested_encryption != config.audio_encryption)
+            {
+                config.audio_encryption = requested_encryption;
+                auto server_config = server_->get_config();
+                bool updated = false;
+                for (auto& device_cfg : server_config->devices)
+                {
+                    if ((!config.public_key.empty() && device_cfg.public_key == config.public_key) ||
+                        (!config.address.empty() && device_cfg.address == config.address))
+                    {
+                        device_cfg.audio_encryption = requested_encryption;
+                        updated = true;
+                        break;
+                    }
+                }
+                if (!updated)
+                {
+                    server_config->devices.push_back(config);
+                }
+                Config::save(server_config);
+            }
+
+            // Start UDP sending thread
+            udp_send_thread = std::thread(&Device::udp_send_loop, this);
 
                 server_->update_mute_state();
 
@@ -604,7 +644,7 @@ void Device::handle_received_message(const Message& msg)
             }
 
             // Build PLAY_RESPONSE with audio info
-            std::vector<uint8_t> response_body(12);
+            std::vector<uint8_t> response_body(13);
             auto audio_info = server_->get_audio_info();
 
             // UDP port (2 bytes) - using a dynamically bound port (0 for auto-assign)
@@ -629,6 +669,7 @@ void Device::handle_received_message(const Message& msg)
             // Format (2 bytes)
             response_body[10] = (audio_info.format >> 8) & 0xFF;
             response_body[11] = audio_info.format & 0xFF;
+            response_body[12] = audio_encryption_to_wire(config.audio_encryption);
 
             send_message(Message::build(
                 ProtocolMagic::PLAY_RESPONSE,
@@ -882,7 +923,7 @@ void Device::udp_send_loop()
                 audio_buffer.erase(audio_buffer.begin(), audio_buffer.begin() + chunk_size);
 
                 // Encrypt audio data using UDP audio key
-                auto encrypted_chunk = encrypt_audio_data(audio_chunk);
+                auto encrypted_chunk = encrypt_audio_data(audio_chunk, seq);
                 packet_buffer.insert(packet_buffer.end(), encrypted_chunk.begin(), encrypted_chunk.end());
 
                 // Release lock before sending
@@ -909,15 +950,32 @@ void Device::udp_send_loop()
     Logger::d(TAG, "Device [{}] UDP send thread ended", config.name);
 }
 
-std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plaintext)
+std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plaintext, const uint32_t sequence)
 {
-    // Simple XOR encryption with UDP audio key (can be replaced with proper AES if needed)
-    std::vector<uint8_t> encrypted = plaintext;
-    for (size_t i = 0; i < encrypted.size(); ++i)
-    {
-        encrypted[i] ^= udp_audio_key[i % udp_audio_key.size()];
+    if (config.audio_encryption == AudioEncryptionMethod::NONE) {
+        return plaintext;
     }
-    return encrypted;
+
+    if (config.audio_encryption == AudioEncryptionMethod::XOR_256) {
+        std::vector<uint8_t> encrypted = plaintext;
+        for (size_t i = 0; i < encrypted.size(); ++i)
+        {
+            encrypted[i] ^= udp_audio_key[i % udp_audio_key.size()];
+        }
+        return encrypted;
+    }
+
+    const auto iv = build_udp_audio_iv(sequence, udp_audio_key);
+    if (config.audio_encryption == AudioEncryptionMethod::AES128GCM) {
+        std::vector<uint8_t> key(udp_audio_key.begin(), udp_audio_key.begin() + 16);
+        return Crypto::aes_128_gcm_encrypt(key, iv, plaintext);
+    }
+
+    if (config.audio_encryption == AudioEncryptionMethod::AES256GCM) {
+        return Crypto::aes_256_gcm_encrypt(udp_audio_key, iv, plaintext);
+    }
+
+    return plaintext;
 }
 
 void Device::send_udp_packet(const uint8_t* data, size_t len)

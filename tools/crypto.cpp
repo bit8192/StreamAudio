@@ -438,6 +438,69 @@ std::vector<uint8_t> Crypto::aes_256_gcm_encrypt(
     return ciphertext;
 }
 
+// AES-128-GCM 加密
+std::vector<uint8_t> Crypto::aes_128_gcm_encrypt(
+    const std::vector<uint8_t>& key,
+    const std::vector<uint8_t>& iv,
+    const std::vector<uint8_t>& plaintext
+) {
+    if (key.size() != 16) {
+        throw CryptoException("AES-128-GCM requires a 16-byte key");
+    }
+    if (iv.empty()) {
+        throw CryptoException("IV cannot be empty");
+    }
+
+    Logger::d(LOG_TAG, "encrypt aes128gcm: key={}\tiv={}\tplaintext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(plaintext));
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw CryptoException("Failed to create encryption context");
+    }
+
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to initialize AES-128-GCM encryption");
+    }
+
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv.size(), nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to set IV length");
+    }
+
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to set key and IV");
+    }
+
+    std::vector<uint8_t> ciphertext(plaintext.size() + EVP_CIPHER_CTX_block_size(ctx));
+    int len = 0;
+    if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to encrypt data");
+    }
+    int ciphertext_len = len;
+
+    if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to finalize encryption");
+    }
+    ciphertext_len += len;
+
+    std::vector<uint8_t> tag(16);
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to get authentication tag");
+    }
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    ciphertext.resize(ciphertext_len);
+    ciphertext.insert(ciphertext.end(), tag.begin(), tag.end());
+
+    return ciphertext;
+}
+
 // AES-256-GCM 解密
 std::vector<uint8_t> Crypto::aes_256_gcm_decrypt(
     const std::vector<uint8_t>& key,
@@ -513,3 +576,70 @@ std::vector<uint8_t> Crypto::aes_256_gcm_decrypt(
     return plaintext;
 }
 
+// AES-128-GCM 解密
+std::vector<uint8_t> Crypto::aes_128_gcm_decrypt(
+    const std::vector<uint8_t>& key,
+    const std::vector<uint8_t>& iv,
+    const std::vector<uint8_t>& ciphertext
+) {
+    if (key.size() != 16) {
+        throw CryptoException("AES-128-GCM requires a 16-byte key");
+    }
+    if (iv.empty()) {
+        throw CryptoException("IV cannot be empty");
+    }
+    if (ciphertext.size() < 16) {
+        throw CryptoException("Ciphertext too short (must include 16-byte authentication tag)");
+    }
+
+    Logger::d(LOG_TAG, "decrypt aes128gcm: key={}\tiv={}\tciphertext={}", HEX_TOOL::to_hex(key), HEX_TOOL::to_hex(iv), HEX_TOOL::to_hex(ciphertext));
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        throw CryptoException("Failed to create decryption context");
+    }
+
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), nullptr, nullptr, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to initialize AES-128-GCM decryption");
+    }
+
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv.size(), nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to set IV length");
+    }
+
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), iv.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to set key and IV");
+    }
+
+    const size_t actual_ciphertext_len = ciphertext.size() - 16;
+    std::vector<uint8_t> actual_ciphertext(ciphertext.begin(), ciphertext.begin() + actual_ciphertext_len);
+    std::vector<uint8_t> tag(ciphertext.end() - 16, ciphertext.end());
+
+    std::vector<uint8_t> plaintext(actual_ciphertext_len + EVP_CIPHER_CTX_block_size(ctx));
+    int len = 0;
+    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, actual_ciphertext.data(), actual_ciphertext_len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to decrypt data");
+    }
+    int plaintext_len = len;
+
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, tag.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Failed to set authentication tag");
+    }
+
+    int ret = EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len);
+    if (ret <= 0) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw CryptoException("Decryption failed: authentication tag verification failed");
+    }
+    plaintext_len += len;
+    plaintext.resize(plaintext_len);
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    return plaintext;
+}
