@@ -8,6 +8,10 @@
 #include "platform/audio_server.h"
 #include "tools/hextool.h"
 #include "platform/socket.h"
+#include <algorithm>
+#ifndef _WIN32
+#include <sys/select.h>
+#endif
 
 #ifdef _WIN32
 #pragma push_macro("ERROR")
@@ -51,6 +55,7 @@ Device::Device(std::shared_ptr<AudioServer> server, DeviceConfig config, const l
       udp_socket(INVALID_SOCKET),
       udp_streaming(false),
       udp_sequence_num(0),
+      last_udp_response_ms(0),
       audio_data_available(false)
 {
     // 加载公钥（如果配置中有）
@@ -83,6 +88,7 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
       udp_socket(INVALID_SOCKET),
       udp_streaming(false),
       udp_sequence_num(0),
+      last_udp_response_ms(0),
       audio_data_available(false)
 {
     session_key.resize(32, 0);
@@ -90,22 +96,9 @@ Device::Device(std::shared_ptr<AudioServer> server, const socket_t socket_fd, co
 
 Device::~Device()
 {
-    // Stop UDP streaming if active
-    if (udp_streaming)
-    {
-        udp_streaming = false;
-        if (udp_send_thread.joinable())
-        {
-            // Wake up the UDP thread
-            {
-                std::lock_guard<std::mutex> lock(audio_buffer_mutex);
-                audio_data_available = true;
-            }
-            audio_buffer_cv.notify_all();
-            udp_send_thread.join();
-        }
-        close_udp_socket();
-        server_->update_mute_state();
+    stop_udp_streaming_internal("device destroyed", false);
+    if (udp_response_thread.joinable()) {
+        udp_response_thread.join();
     }
 
     disconnect();
@@ -609,6 +602,9 @@ void Device::handle_received_message(const Message& msg)
             udp_streaming = true;
             udp_sequence_num = 0;
             audio_data_available = false;
+            last_udp_response_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()
+            ).count();
 
             if (has_encryption_method && requested_encryption != config.audio_encryption)
             {
@@ -634,6 +630,10 @@ void Device::handle_received_message(const Message& msg)
 
             // Start UDP sending thread
             udp_send_thread = std::thread(&Device::udp_send_loop, this);
+            if (udp_response_thread.joinable()) {
+                udp_response_thread.join();
+            }
+            udp_response_thread = std::thread(&Device::udp_response_loop, this);
 
                 server_->update_mute_state();
 
@@ -695,37 +695,7 @@ void Device::handle_received_message(const Message& msg)
             Logger::i(TAG, "Device [{}] requested STOP", config.name);
 
             // Stop UDP audio streaming and cleanup resources
-            if (udp_streaming)
-            {
-                udp_streaming = false;
-
-                // Wait for UDP send thread to finish
-                if (udp_send_thread.joinable())
-                {
-                    // Signal audio buffer to wake up waiting thread
-                    {
-                        std::lock_guard<std::mutex> lock(audio_buffer_mutex);
-                        audio_data_available = true;
-                    }
-                    audio_buffer_cv.notify_all();
-                    udp_send_thread.join();
-                }
-
-                server_->update_mute_state();
-
-                // Close UDP socket
-                close_udp_socket();
-
-                // Clear audio buffer
-                {
-                    std::lock_guard<std::mutex> lock(audio_buffer_mutex);
-                    audio_segments.clear();
-                    segment_offset = 0;
-                    audio_data_available = false;
-                }
-
-                Logger::i(TAG, "Device [{}] UDP streaming stopped", config.name);
-            }
+            stop_udp_streaming_internal("client requested stop", false);
 
             // Send STOP_RESPONSE with success status
             std::vector<uint8_t> response_body(1);
@@ -1031,6 +1001,84 @@ void Device::udp_send_loop()
     Logger::d(TAG, "Device [{}] UDP send thread ended", config.name);
 }
 
+void Device::udp_response_loop()
+{
+    Logger::d(TAG, "Device [{}] UDP response thread started", config.name);
+
+    constexpr int RESPONSE_BUFFER_SIZE = 64;
+    constexpr int RESPONSE_TIMEOUT_MS = 10000;
+    constexpr int SELECT_TIMEOUT_MS = 500;
+
+    std::vector<uint8_t> buffer(RESPONSE_BUFFER_SIZE, 0);
+
+    while (udp_streaming)
+    {
+        if (udp_socket == INVALID_SOCKET)
+        {
+            break;
+        }
+
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(udp_socket, &read_fds);
+
+        timeval tv{};
+        tv.tv_sec = SELECT_TIMEOUT_MS / 1000;
+        tv.tv_usec = (SELECT_TIMEOUT_MS % 1000) * 1000;
+
+        int ready = 0;
+#ifdef _WIN32
+        ready = select(0, &read_fds, nullptr, nullptr, &tv);
+#else
+        ready = select(udp_socket + 1, &read_fds, nullptr, nullptr, &tv);
+#endif
+        if (ready > 0 && FD_ISSET(udp_socket, &read_fds))
+        {
+            sockaddr_storage from_addr{};
+            socklen_t from_len = sizeof(from_addr);
+            const ssize_t received = recvfrom(
+                udp_socket,
+                reinterpret_cast<char*>(buffer.data()),
+                static_cast<int>(buffer.size()),
+                0,
+                reinterpret_cast<sockaddr*>(&from_addr),
+                &from_len
+            );
+            if (received > 0)
+            {
+                bool matched_client = false;
+                if (client_udp_addr.ss_family == AF_INET && from_addr.ss_family == AF_INET)
+                {
+                    const auto* expected = reinterpret_cast<const sockaddr_in*>(&client_udp_addr);
+                    const auto* actual = reinterpret_cast<const sockaddr_in*>(&from_addr);
+                    matched_client = expected->sin_addr.s_addr == actual->sin_addr.s_addr &&
+                                     expected->sin_port == actual->sin_port;
+                }
+
+                if (matched_client)
+                {
+                    last_udp_response_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now().time_since_epoch()
+                    ).count();
+                }
+            }
+        }
+
+        const int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()
+        ).count();
+        const int64_t last_ms = last_udp_response_ms.load();
+        if (last_ms > 0 && now_ms - last_ms > RESPONSE_TIMEOUT_MS)
+        {
+            Logger::w(TAG, "Device [{}] UDP response timeout, stopping stream", config.name);
+            stop_udp_streaming_internal("udp response timeout", true);
+            break;
+        }
+    }
+
+    Logger::d(TAG, "Device [{}] UDP response thread ended", config.name);
+}
+
 std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plaintext, const uint32_t sequence)
 {
     if (config.audio_encryption == AudioEncryptionMethod::NONE) {
@@ -1057,6 +1105,54 @@ std::vector<uint8_t> Device::encrypt_audio_data(const std::vector<uint8_t>& plai
     }
 
     return plaintext;
+}
+
+void Device::stop_udp_streaming_internal(const char* reason, const bool from_response_thread)
+{
+    bool should_stop = false;
+    {
+        std::lock_guard<std::mutex> lock(udp_state_mutex);
+        if (udp_streaming)
+        {
+            udp_streaming = false;
+            should_stop = true;
+        }
+    }
+
+    if (should_stop)
+    {
+        {
+            std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+            audio_data_available = true;
+        }
+        audio_buffer_cv.notify_all();
+
+        if (udp_send_thread.joinable())
+        {
+            udp_send_thread.join();
+        }
+
+        if (!from_response_thread && udp_response_thread.joinable())
+        {
+            udp_response_thread.join();
+        }
+
+        close_udp_socket();
+
+        {
+            std::lock_guard<std::mutex> lock(audio_buffer_mutex);
+            audio_segments.clear();
+            segment_offset = 0;
+            audio_data_available = false;
+        }
+
+        server_->update_mute_state();
+        Logger::i(TAG, "Device [{}] UDP streaming stopped: {}", config.name, reason);
+    }
+    else if (!from_response_thread && udp_response_thread.joinable())
+    {
+        udp_response_thread.join();
+    }
 }
 
 void Device::send_udp_packet(const uint8_t* data, size_t len)

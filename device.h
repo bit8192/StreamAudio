@@ -128,6 +128,9 @@ private:
     std::thread udp_send_thread;              // UDP 发送线程
     std::vector<uint8_t> udp_audio_key;       // UDP 音频加密密钥
     std::atomic<uint32_t> udp_sequence_num;   // UDP 包序列号
+    std::atomic<int64_t> last_udp_response_ms; // 最近一次 UDP 响应时间（ms）
+    std::thread udp_response_thread;          // UDP 响应监听线程
+    std::mutex udp_state_mutex;               // UDP 状态保护锁
 
     // 音频缓冲区（线程安全）
     std::mutex audio_buffer_mutex;
@@ -153,7 +156,9 @@ private:
 
     // UDP 相关内部方法
     void udp_send_loop();                     // UDP 发送线程主循环
+    void udp_response_loop();                 // UDP 响应监听线程主循环
     void send_udp_packet(const uint8_t* data, size_t len);  // 发送单个 UDP 包
     void close_udp_socket();                  // 关闭 UDP socket
     std::vector<uint8_t> encrypt_audio_data(const std::vector<uint8_t>& plaintext, uint32_t sequence);  // 加密音频数据
+    void stop_udp_streaming_internal(const char* reason, bool from_response_thread); // 停止 UDP 流并清理资源
 };
