@@ -214,6 +214,7 @@ void AudioServer::audio_capture_loop() {
             if (!audio_streaming) {
                 return false; // Stop capturing
             }
+            if (length < 1) return true;
 
             const auto capture_time_ns = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(

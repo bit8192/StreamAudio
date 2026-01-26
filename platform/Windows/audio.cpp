@@ -102,7 +102,9 @@ void Audio::capture(const std::function<bool(const char *, UINT32)> &callback) {
         hr = pCaptureClient->GetNextPacketSize(&packetLength);
         if (FAILED(hr)) throw AudioException("get nextPacket failed.");
 
-        while (packetLength != 0) {
+        if (packetLength < 1) {
+            is_continue = callback(nullptr, 0);
+        } else while (packetLength != 0) {
             hr = pCaptureClient->GetBuffer(&pData, &numFramesAvailable, (DWORD*) &flags, nullptr, nullptr);
             if (FAILED(hr)) throw AudioException("get buffer failed.");
 
