@@ -90,6 +90,7 @@ list(APPEND STREAM_AUDIO_LINK_LIBRARIES Qt::Core Qt::Gui Qt::Widgets Qt::Network
 
 target_link_libraries(StreamAudio ${STREAM_AUDIO_LINK_LIBRARIES})
 
+# 隐藏控制台窗口
 if (WIN32)
     set_target_properties(StreamAudio PROPERTIES
             LINK_FLAGS "-Wl,-subsystem,windows"
