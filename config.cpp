@@ -24,6 +24,7 @@ void init_server_config(const std::shared_ptr<Config> &config)
 {
     config->port = STREAMAUDIO_CONFIG_DEFAULT_PORT;
     config->private_key = Crypto::ED25519::generate();
+    config->mute_on_streaming = true;
 }
 
 std::shared_ptr<Config> Config::parse_config_file(const std::filesystem::path& config_path) {

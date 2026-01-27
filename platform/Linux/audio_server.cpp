@@ -27,8 +27,8 @@ audio_streaming(false) {
     address.sin_port = htons(port); // 端口转换为网络字节序
 
     // 3. 绑定socket到地址和端口
-    if (bind(server_socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)) < 0) {
-        throw SocketException("绑定失败");
+    if (const int err = bind(server_socket, reinterpret_cast<sockaddr *>(&address), sizeof(address)) < 0) {
+        throw SocketException("绑定失败: " + std::to_string(err));
     }
 
     // 4. 监听连接

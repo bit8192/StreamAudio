@@ -8,12 +8,14 @@
 #include "move_client_dialog.h"
 #include "platform_utils.h"
 #include "config.h"
+#include "version.h"
 #include <QAction>
 #include <QIcon>
 #include <QApplication>
 #include <QDesktopServices>
 #include <QMessageBox>
 #include <QUrl>
+#include <QLabel>
 #include "logger.h"
 
 constexpr char LOG_TAG[] = "TrayIcon";
@@ -188,11 +190,29 @@ void TrayIcon::show_pair_qrcode() {
 }
 
 void TrayIcon::show_about() {
-    QMessageBox::about(nullptr, "关于 StreamAudio",
-                       "StreamAudio v1.0\n\n"
-                       "跨平台音频流服务器\n"
-                       "支持 Windows 和 Linux\n\n"
-                       "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发");
+    QMessageBox about_box;
+    about_box.setWindowTitle("关于 StreamAudio");
+    about_box.setTextFormat(Qt::RichText);
+    about_box.setTextInteractionFlags(Qt::TextBrowserInteraction);
+    const QString about_text = QString(
+        "<p>"
+        "StreamAudio v%1<br><br>"
+        "跨平台音频流服务器<br>"
+        "支持 Windows 和 Linux<br><br>"
+        "作者：bincker (<a href=\"mailto:bit16@qq.com\">bit16@qq.com</a>)<br>"
+        "源码地址：<a href=\"https://github.com/bit8192/StreamAudio\">"
+        "https://github.com/bit8192/StreamAudio</a><br><br>"
+        "开源协议：GPL-3.0<br>"
+        "<a href=\"https://github.com/bit8192/StreamAudio/blob/main/LICENSE\">"
+        "https://github.com/bit8192/StreamAudio/blob/main/LICENSE</a><br><br>"
+        "使用 Qt、OpenSSL、PulseAudio/WASAPI 开发"
+        "</p>"
+    ).arg(VERSION_NAME);
+    about_box.setText(about_text);
+    if (auto *label = about_box.findChild<QLabel*>("qt_msgbox_label")) {
+        label->setOpenExternalLinks(true);
+    }
+    about_box.exec();
 }
 
 void TrayIcon::on_activated(QSystemTrayIcon::ActivationReason reason) {
